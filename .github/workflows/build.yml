@@ -1,0 +1,40 @@
+name: Windows build and package checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build manager
+        run: ./manager/build.ps1
+      - name: Test release safety checks
+        run: ./manager/test-release-safety.ps1
+      - name: Audit release candidates (working tree only)
+        run: ./manager/audit-release.ps1
+      - name: Run offline unit tests
+        run: ./manager/test.ps1 -UnitOnly
+      - name: Verify packaging boundaries
+        run: ./manager/test-package.ps1
+      - name: Verify Windows PowerShell compatibility
+        shell: powershell
+        run: |
+          ./manager/test-release-safety.ps1
+          ./manager/test.ps1 -UnitOnly
+          ./manager/test-package.ps1
+      - name: Build manager-only preview
+        run: ./manager/package.ps1
+      # No release publishing or artifact upload until the owner approves public distribution.

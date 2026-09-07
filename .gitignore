@@ -1,0 +1,30 @@
+# Personal proxy profiles and credentials
+codex-mihomo.yaml
+settings.json
+node-preferences.json
+profiles/
+
+# Runtime state, logs, and caches
+*.log
+*.log.1
+manager-state.json
+proxy-state.json
+runtime/data/cache.db
+runtime/mihomo.exe
+runtime/data/GeoSite.dat
+runtime/data/geoip.metadb
+
+# Local build and desktop artifacts
+CodexProxyManager*.exe
+*.lnk
+*.pdb
+bin/
+obj/
+dist/
+
+# IDE and operating-system files
+.vs/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

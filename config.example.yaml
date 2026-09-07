@@ -1,0 +1,35 @@
+# Safe example only. The application stores real profiles under
+# %LOCALAPPDATA%\CodexProxyManager\profiles and never needs credentials here.
+mode: rule
+log-level: info
+find-process-mode: strict
+allow-lan: false
+ipv6: true
+mixed-port: 17890
+external-controller: ""
+
+proxies:
+  - name: "Local Upstream"
+    type: socks5
+    server: "127.0.0.1"
+    port: 10808
+
+proxy-groups:
+  - name: "Codex Proxy"
+    type: select
+    proxies:
+      - "Local Upstream"
+      - DIRECT
+
+rules:
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - AND,((PROCESS-NAME,ChatGPT.exe),(GEOSITE,cn)),DIRECT
+  - AND,((PROCESS-NAME,codex.exe),(GEOSITE,cn)),DIRECT
+  - AND,((PROCESS-NAME,ChatGPT.exe),(GEOIP,CN)),DIRECT
+  - AND,((PROCESS-NAME,codex.exe),(GEOIP,CN)),DIRECT
+  - PROCESS-NAME,ChatGPT.exe,Codex Proxy
+  - PROCESS-NAME,codex.exe,Codex Proxy
+  - MATCH,DIRECT
