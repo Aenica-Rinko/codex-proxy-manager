@@ -1,6 +1,8 @@
 # 从零开始使用 Codex Proxy Manager
 
-这是发布准备版本，不是已完成独立 Windows 验收的 v1.0。新生成的 `manager-only-preview.zip` 含管理器、说明、恢复工具、LICENSE，以及 `manager/` 对应源码和构建脚本；不含代理核心、规则库、节点或订阅，不是开箱即用的完整安装包。项目采用 GPL-3.0-only，署名 Rinko，完整条款见 LICENSE；当前尚未公开发布。旧包未自动更新，公开发布前须重新构建和打包。
+这是预览版，不是已完成独立 Windows 验收的 v1.0。[发布页](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.2) 的 `manager-only-preview.zip` 含管理器、说明、恢复工具、LICENSE，以及 `manager/` 对应源码和构建脚本；不含代理核心、规则库、节点或订阅，不是开箱即用的完整安装包。项目采用 GPL-3.0-only，署名 Rinko，完整条款见 LICENSE。
+
+**已知问题：** 已收到启动应用后商店加载或游戏联网变慢的反馈，原因未定位、未修复；对这类共存场景敏感的用户建议等待后续更新。详情和反馈方式见 [发布说明](RELEASE_NOTES.md)。
 
 ## 1. 获取并解压管理器
 
