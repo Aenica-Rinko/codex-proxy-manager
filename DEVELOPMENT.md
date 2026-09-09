@@ -64,7 +64,7 @@
 
 版本统一修改 `manager/AppInfo.cs`，EXE 默认文件名和程序集版本随之更新。文件哈希用于核对字节，不是发布者签名。打包名单也不能替代对文档和源码内容的人工敏感信息审计。
 
-已提供 Windows GitHub Actions 构建配置，仅运行单元测试和打包检查，不使用私人节点、不运行需 Codex/核心的完整网络回归、不自动上传产物或创建 Release。该工作流尚未在真实 GitHub 仓库运行；本地验证不是云端验收。步骤写法参考 [checkout 官方说明](https://github.com/actions/checkout)。
+已提供 Windows GitHub Actions 构建配置，运行构建、安全检查、单元测试和打包检查，不使用私人节点、不运行需 Codex/核心的完整网络回归、不自动上传产物或创建 Release。v0.10.1、v0.10.2 功能提交已在真实 GitHub 私有仓库通过；每个后续提交仍须检查其对应结果。云端通过不代替真实用户与独立 Windows 验收。步骤写法参考 [checkout 官方说明](https://github.com/actions/checkout)。
 
 完整发布边界和 v1.0 待办见 [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)。
 

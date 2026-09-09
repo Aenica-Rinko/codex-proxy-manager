@@ -6,7 +6,7 @@ $fixture = Join-Path $scratch 'fixture'
 New-Item -ItemType Directory -Path (Join-Path $fixture 'manager') -Force | Out-Null
 try {
     $docs = @('LICENSE','README.md','QUICKSTART.md','USER_GUIDE.md','DEVELOPMENT.md','PRIVACY.md','ARCHITECTURE.md',
-        'RELEASE_CHECKLIST.md','ACCEPTANCE.md','THIRD_PARTY_NOTICES.md',
+        'RELEASE_CHECKLIST.md','RELEASE_NOTES.md','ACCEPTANCE.md','THIRD_PARTY_NOTICES.md',
         'config.example.yaml','Restore Codex Network.cmd','restore_codex_network.ps1')
     foreach ($name in $docs) { Copy-Item -LiteralPath (Join-Path $root $name) -Destination (Join-Path $fixture $name) }
     foreach ($name in $ManagerReleaseSourceFiles) {

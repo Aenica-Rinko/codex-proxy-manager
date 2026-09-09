@@ -13,7 +13,16 @@ been retroactively updated and must not be reused as public release artifacts.
 Before publishing a full runtime bundle, audit the exact core and geodata assets,
 their provenance and applicable redistribution terms. See RELEASE_CHECKLIST.md.
 
-## Mihomo
+## Manager-only dependency inventory (2026-09-09)
+
+The build script compiles the project-owned C# sources and references only the
+system .NET Framework assemblies System, System.Core, System.Drawing,
+System.Management, System.Web.Extensions and System.Windows.Forms. These system
+assemblies are not copied into the ZIP. No third-party binary or geodata file is
+included by the packaging allowlist. This inventory describes package contents,
+not a legal opinion or an audit of user-supplied runtime components.
+
+## Mihomo runtime (not bundled)
 
 This project can run an unmodified Mihomo executable as a separate process and
 control it through its local HTTP API.

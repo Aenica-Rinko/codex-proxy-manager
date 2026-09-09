@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
     # Explicit allowlist only: never recursively copy the workspace or runtime/user directories.
     $files = @('LICENSE','README.md','QUICKSTART.md','USER_GUIDE.md','DEVELOPMENT.md','PRIVACY.md','ARCHITECTURE.md',
-        'RELEASE_CHECKLIST.md','ACCEPTANCE.md','THIRD_PARTY_NOTICES.md',
+        'RELEASE_CHECKLIST.md','RELEASE_NOTES.md','ACCEPTANCE.md','THIRD_PARTY_NOTICES.md',
         'config.example.yaml','Restore Codex Network.cmd','restore_codex_network.ps1') +
         @($ManagerReleaseSourceFiles | ForEach-Object { 'manager/' + $_ })
     New-Item -ItemType Directory -Path (Join-Path $stage 'manager') | Out-Null
