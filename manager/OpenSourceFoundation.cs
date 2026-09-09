@@ -10,7 +10,6 @@ namespace CodexProxyManager
     {
         public int SchemaVersion { get; set; }
         public string ActiveProfileId { get; set; }
-        public bool AutoStart { get; set; }
         public bool AutoSelectFastest { get; set; }
         public bool AutoFailover { get; set; }
         public int MixedPort { get; set; }
@@ -52,7 +51,6 @@ namespace CodexProxyManager
         internal int MixedPort { get; set; }
         internal int ControllerPort { get; set; }
         internal string ControllerSecret { get; set; }
-        internal bool AutoStart { get; set; }
         internal bool AutoSelectFastest { get; set; }
         internal bool AutoFailover { get; set; }
 
@@ -118,7 +116,6 @@ namespace CodexProxyManager
                 MixedPort = settings.MixedPort,
                 ControllerPort = settings.ControllerPort,
                 ControllerSecret = settings.ControllerSecret,
-                AutoStart = settings.AutoStart,
                 AutoSelectFastest = settings.AutoSelectFastest,
                 AutoFailover = settings.AutoFailover
             };
@@ -138,6 +135,8 @@ namespace CodexProxyManager
         internal static ManagerSettings ReadSettings(string path)
         {
             string json = File.ReadAllText(path, Encoding.UTF8);
+            // Legacy AutoStart is intentionally no longer represented or applied.
+            // The serializer ignores it on read and omits it on the next save.
             ManagerSettings settings = new JavaScriptSerializer().Deserialize<ManagerSettings>(json);
             ApplicationConfiguration.Normalize(settings);
             return settings;

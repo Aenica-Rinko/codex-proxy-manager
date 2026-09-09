@@ -36,13 +36,38 @@ namespace CodexProxyManager
                 Check(proceed.Enabled, "files present continue");
             }
             var defaults = (ManagerSettings)typeof(ProfileManagerForm).GetMethod("LoadSettingsOrDefault", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { user });
-            Check(!defaults.AutoStart, "new user must opt into automatic launch");
-            defaults.AutoStart = true;
+            Check(typeof(ManagerSettings).GetProperty("AutoStart") == null, "automatic launch setting still exposed");
+            Check(typeof(StartupProfile).GetProperty("AutoStart", BindingFlags.NonPublic | BindingFlags.Instance) == null, "automatic launch still passed to runtime");
+            defaults.AutoSelectFastest = true;
+            defaults.AutoFailover = true;
             StartupConfiguration.WriteSettings(Path.Combine(user, "settings.json"), defaults);
+            string settingsPath = Path.Combine(user, "settings.json");
+            string currentJson = File.ReadAllText(settingsPath);
+            // Simulate an existing user's old opt-in without using real user data.
+            string legacyJson = currentJson.Insert(currentJson.IndexOf('{') + 1, "\"AutoStart\":true,");
+            File.WriteAllText(settingsPath, legacyJson);
             var existing = (ManagerSettings)typeof(ProfileManagerForm).GetMethod("LoadSettingsOrDefault", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { user });
-            Check(existing.AutoStart, "existing user preference lost");
+            Check(existing.AutoSelectFastest && existing.AutoFailover, "unrelated existing preferences lost");
+            Check(File.ReadAllText(settingsPath) == legacyJson, "loading settings rewrote user data");
+            StartupConfiguration.WriteSettings(settingsPath, existing);
+            Check(!File.ReadAllText(settingsPath).Contains("\"AutoStart\""), "legacy automatic launch persisted after save");
+            using (var profiles = (ProfileManagerForm)Activator.CreateInstance(typeof(ProfileManagerForm),
+                BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] { root, user, false }, null))
+            {
+                Check(typeof(ProfileManagerForm).GetField("autoStartBox", BindingFlags.NonPublic | BindingFlags.Instance) == null,
+                    "automatic launch checkbox still available");
+            }
+            using (var dashboard = new DashboardForm())
+            {
+                int requests = 0;
+                dashboard.StartRequested += delegate { requests++; };
+                Check(requests == 0, "dashboard construction requested application start");
+                var start = (Button)typeof(DashboardForm).GetField("startButton", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(dashboard);
+                typeof(Button).GetMethod("OnClick", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(start, new object[] { EventArgs.Empty });
+                Check(requests == 1, "manual start click did not raise exactly one request");
+            }
             Check(Assembly.GetExecutingAssembly().GetName().Version.ToString() == AppInfo.Version + ".0", "assembly version drift");
-            Console.WriteLine("PASS onboarding: read-only missing/empty checks, cached data, continue gate, first-run defaults, existing preference and assembly version");
+            Console.WriteLine("PASS onboarding: installation checks, legacy AutoStart ignored/removed on save, unrelated preferences preserved, manual start event and assembly version");
         }
     }
 }

@@ -40,7 +40,6 @@ namespace CodexProxyManager
         private ManagerSettings settings;
         private readonly ListBox profileList;
         private readonly Label selectionInfo;
-        private readonly CheckBox autoStartBox;
         private readonly CheckBox autoFastestBox;
         private readonly CheckBox autoFailoverBox;
         private readonly TextBox profileNameBox;
@@ -107,16 +106,8 @@ namespace CodexProxyManager
             Button deleteButton = MakeChildButton(left, "移出列表", 149, 307, 125, Color.FromArgb(218, 54, 51));
             activateButton.Click += ActivateSelectedProfile;
             deleteButton.Click += DeleteSelectedProfile;
-            autoStartBox = new CheckBox
-            {
-                Text = "启动管理器后自动打开当前应用",
-                Left = 16,
-                Top = 382,
-                Width = 255,
-                Checked = settings.AutoStart,
-                ForeColor = ForeColor
-            };
-            left.Controls.Add(autoStartBox);
+            AddChildLabel(left, "应用仅在手动点击启动时打开", 16, 382, 255, 24, 9F,
+                Color.FromArgb(139, 148, 158), false);
             autoFastestBox = new CheckBox
             {
                 Text = "启动后测速并选择最快节点",
@@ -278,7 +269,6 @@ namespace CodexProxyManager
             {
                 SchemaVersion = 1,
                 ActiveProfileId = "",
-                AutoStart = false,
                 AutoSelectFastest = false,
                 AutoFailover = false,
                 MixedPort = 17890,
@@ -329,7 +319,6 @@ namespace CodexProxyManager
             if (item == null) return;
             settings.ActiveProfileId = item.Profile.Id;
             FollowActiveProfile();
-            settings.AutoStart = autoStartBox.Checked;
             SaveSettings();
             changed = true;
             SetStatus("已选择“" + item.Profile.Name + "”。关闭窗口后即可使用。", true);
@@ -432,7 +421,6 @@ namespace CodexProxyManager
                 settings.Profiles.Add(profile);
                 settings.ActiveProfileId = id;
                 FollowActiveProfile();
-                settings.AutoStart = autoStartBox.Checked;
                 SaveSettings();
                 changed = true;
                 ClearEditor();
@@ -447,7 +435,6 @@ namespace CodexProxyManager
 
         private void SaveSettings()
         {
-            settings.AutoStart = autoStartBox.Checked;
             settings.AutoSelectFastest = autoFastestBox.Checked;
             settings.AutoFailover = autoFailoverBox.Checked;
             StartupConfiguration.WriteSettings(Path.Combine(userRoot, "settings.json"), settings);

@@ -89,7 +89,7 @@ namespace CodexProxyManager
             text.AppendLine("• 想控制外部客户端节点：选择本机 Clash/Mihomo API，填写端口、控制密钥和策略组。");
             text.AppendLine();
             text.AppendLine("3. 选择应用并启动");
-            text.AppendLine("新用户首次保存后先进入管理面板，不自动启动应用。默认入口是 Codex，也可以在管理应用中添加兼容的 EXE。");
+            text.AppendLine("打开管理器或保存设置只进入管理面板；仅手动点击启动应用才会打开应用。旧版自动启动设置不再生效。默认入口是 Codex，也可以在管理应用中添加兼容的 EXE。");
             text.AppendLine("完全退出目标应用，再点击启动应用。只支持代理参数/环境变量方式，不是任意游戏或 UWP 的透明代理。");
             text.AppendLine();
             text.AppendLine("4. 验证与排障");

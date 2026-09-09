@@ -785,7 +785,6 @@ namespace CodexProxyManager
         private volatile bool sessionActive;
         private volatile bool busy;
         private volatile bool sawCodex;
-        private bool initialStartPending;
         private bool allowExit;
         private int noCodexTicks;
         private int dashboardTicks;
@@ -821,7 +820,6 @@ namespace CodexProxyManager
             autoFailover = startup.AutoFailover;
             preferredProxyGroupName = startup.ProxyGroupName;
             activeProfileName = startup.ProfileName;
-            initialStartPending = startup.AutoStart;
             RotateLog(managerLog);
             RotateLog(coreOutLog);
             RotateLog(coreErrLog);
@@ -890,12 +888,8 @@ namespace CodexProxyManager
 
         private void TimerTick(object sender, EventArgs e)
         {
-            if (initialStartPending)
-            {
-                initialStartPending = false;
-                BeginStart();
-            }
-
+            // Opening the manager never starts an application. Only explicit
+            // dashboard/tray start actions may call BeginStart.
             bool codexRunning = IsCodexRunning();
             if (sessionActive && sawCodex)
             {
