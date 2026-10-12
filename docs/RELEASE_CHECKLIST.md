@@ -2,7 +2,7 @@
 
 ## v0.10 已实现的发布准备
 
-- 单一版本源：`manager/AppInfo.cs`，同步窗口、诊断报告、EXE 文件名与程序集版本。
+- 单一版本源：`src/CodexProxyManager/AppInfo.cs`，同步窗口、诊断报告、ZIP 与程序集版本；v0.10.3 起 EXE 使用固定文件名。
 - 首次引导、只读安装检查、缺文件时阻止继续；v0.10.2 起所有用户均须手动点击启动应用，旧自动启动设置不再生效。
 - 管理器专用预发布 ZIP、逐文件 SHA-256 清单和 ZIP 外部校验文件。
 - GPL-3.0-only 完整许可证、Rinko 署名、随包对应源码和构建脚本；使用包内暂存源码构建 EXE，并测试解压后独立重新编译。
@@ -15,16 +15,17 @@
 在源码根目录执行：
 
 ```powershell
-& '.\manager\build.ps1'
-& '.\manager\test-release-safety.ps1'
-& '.\manager\audit-release.ps1'
-& '.\manager\test.ps1' -UnitOnly
-& '.\manager\test-package.ps1'
-& '.\manager\test.ps1' # 需要本地 Codex、核心和规则库
-& '.\manager\package.ps1'
+& '.\scripts\build.ps1'
+& '.\scripts\test-release-safety.ps1'
+& '.\scripts\audit-release.ps1'
+& '.\scripts\test.ps1' -UnitOnly
+& '.\scripts\test-package.ps1'
+& '.\scripts\test-layout.ps1'
+& '.\scripts\test.ps1' # 需要本地 Codex、核心和规则库
+& '.\scripts\package.ps1'
 ```
 
-构建无需 Visual Studio，使用系统 .NET Framework 编译器。打包默认写入 `dist`，已有同版本 ZIP 时拒绝覆盖，可通过 `-OutputDirectory` 选择另一个目录。工作流仅做构建、单元测试和打包检查，不自动创建 GitHub Release、不下载核心、不使用私人节点。
+构建无需 Visual Studio，使用系统 .NET Framework 编译器。打包默认写入 `artifacts/releases`，已有同版本 ZIP 时拒绝覆盖，可通过 `-OutputDirectory` 选择另一个目录。工作流做构建、单元测试、布局迁移和打包检查，不自动创建 GitHub Release、不下载核心、不使用私人节点。
 
 打包名单不代替内容审计：发布前仍须检查允许打包的文档、源码和模板本身是否被误写入凭据。哈希用于发现字节变化，不是签名或来源保证。
 

@@ -1,6 +1,6 @@
 # 从零开始使用 Codex Proxy Manager
 
-这是预览版，不是已完成独立 Windows 验收的 v1.0。[发布页](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.2) 的 `manager-only-preview.zip` 含管理器、说明、恢复工具、LICENSE，以及 `manager/` 对应源码和构建脚本；不含代理核心、规则库、节点或订阅，不是开箱即用的完整安装包。项目采用 GPL-3.0-only，署名 Rinko，完整条款见 LICENSE。
+本文说明 v0.10.3 新目录结构；当前仍是预览版本，不是已完成独立 Windows 验收的 v1.0。管理器 ZIP 含 EXE、docs、tools、LICENSE 和 source 对应源码，不含核心、规则库、节点或订阅。项目采用 GPL-3.0-only，署名 Rinko。历史 v0.10.2 下载包使用旧结构，应阅读它自己随附的说明；当前源码与最近公开下载可能不是同一版本。
 
 **已知问题：** 已收到启动应用后商店加载或游戏联网变慢的反馈，原因未定位、未修复；对这类共存场景敏感的用户建议等待后续更新。详情和反馈方式见 [发布说明](RELEASE_NOTES.md)。
 
@@ -11,10 +11,10 @@
 取得源码后，完整解压到普通、可写且不公开同步的文件夹，在该文件夹打开 PowerShell，运行：
 
 ```powershell
-& '.\manager\build.ps1'
+& '.\scripts\build.ps1'
 ```
 
-成功后，文件夹根目录会生成 `CodexProxyManager.v0.10.2.exe`。该步骤只编译管理器，不启动代理，也不需要节点或已安装 Codex。不需要 Visual Studio；构建脚本使用 Windows .NET Framework 编译器。
+成功后会生成 `app/CodexProxyManager.exe` 及随应用提供的说明。该步骤只编译管理器，不启动代理，也不需要节点或已安装 Codex。不需要 Visual Studio；构建脚本使用 Windows .NET Framework 编译器。从发布包内重新构建时，在 `source/` 内执行上述命令，输出到 `source/app/`。
 
 如果你拿到的是维护者生成的 `manager-only-preview.zip`，它已经有 EXE，可以跳过编译；仍须完整解压，不要在 ZIP 内直接运行。当前没有自动安装器或自动更新功能。遇到脚本策略限制应遵循本机管理策略，不建议为了本项目全局关闭安全限制。
 
@@ -27,11 +27,12 @@
 规则文件可从 [MetaCubeX/meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) 取得 `geosite.dat` 和 `geoip.metadb`。保存成下列目录结构（Windows 通常不区分文件名大小写）。不要将不同格式的数据库仅改名冒充另一种格式。
 
 ```text
-解压目录/
-├── CodexProxyManager.v0.10.2.exe
+应用目录/                   # 源码构建为 app/；管理器 ZIP 为解压根目录
+├── CodexProxyManager.exe
 ├── LICENSE
-├── QUICKSTART.md
-├── manager/                 # 随源码/新预发布包提供的构建源码
+├── docs/QUICKSTART.md
+├── tools/                   # 手动恢复工具
+├── source/                  # 仅发布 ZIP 随附；本地构建不重复复制源码
 └── runtime/
     ├── mihomo.exe
     └── data/
@@ -58,7 +59,7 @@
 
 管理器本身不提供节点或订阅。控制接口只接受本机地址；不要把订阅或控制密钥贴进公开 Issue。
 
-在首次配置窗口的“档案名称”填写自己容易辨认的名称，在“节点来源”选择以下一种方式，填写后点击“添加并设为当前”，再点击“完成”进入面板。不要为本教程向仓库里的 `config.example.yaml` 填写真实凭据。
+在首次配置窗口的“档案名称”填写自己容易辨认的名称，在“节点来源”选择以下一种方式，填写后点击“添加并设为当前”，再点击“完成”进入面板。不要向源码的 `examples/config.example.yaml` 填写真实凭据。
 
 ### A. 使用订阅 URL
 
@@ -113,9 +114,9 @@
 
 ## 5. 更新、数据与卸载
 
-主面板“开始使用 / 版本”随时重开引导；也可运行 `CodexProxyManager.v0.10.2.exe --guide`，它不启动代理或配置向导。配置、节点和收藏位于 `%LOCALAPPDATA%\CodexProxyManager`，不要提交该目录。
+主面板“开始使用 / 版本”随时重开引导；也可运行 `CodexProxyManager.exe --guide`，它不启动代理或配置向导。配置、节点和收藏位于 `%LOCALAPPDATA%\CodexProxyManager`，不要提交该目录。
 
-ZIP 同目录的 `.sha256` 用来核对 ZIP 字节，ZIP 内 `manifest.json` 记录各文件的 SHA-256。哈希不是数字签名：如果哈希文件也被替换，它不能证明发布者身份。源代码仓库里的 `manager/package.ps1` 使用明确文件名单打包，不扫描或复制用户数据目录。
+ZIP 同目录的 `.sha256` 用来核对 ZIP 字节，ZIP 内 `manifest.json` 记录各文件的 SHA-256。哈希不是数字签名：如果哈希文件也被替换，它不能证明发布者身份。源代码仓库里的 `scripts/package.ps1` 使用明确文件名单打包，不扫描或复制用户数据目录。
 
 手动更新前先停止会话并退出管理器，再把新版本完整解压到程序目录或新文件夹。保留自己的用户数据和必要 runtime；不要用示例模板覆盖真实档案，也不要将运行中的 EXE 强行覆盖。若换了 EXE 名称或目录，需要更新自己的快捷方式。
 

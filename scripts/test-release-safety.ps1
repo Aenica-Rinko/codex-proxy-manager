@@ -66,6 +66,17 @@ try {
     try { & (Join-Path $PSScriptRoot 'audit-release.ps1') -Root $gitFixture | Out-Null }
     catch { $message = $_.Exception.Message }
     Check ($message.Contains('private-or-runtime-input')) 'Ignored but tracked private file bypassed audit'
+    # A moved/deleted tracked source must not make the working-tree audit fail;
+    # new destinations still get scanned, including their contents.
+    & git -C $gitFixture rm --cached --quiet -- settings.json
+    [IO.File]::WriteAllText((Join-Path $gitFixture 'old.md'), 'safe')
+    & git -C $gitFixture add -- old.md
+    [IO.File]::Move((Join-Path $gitFixture 'old.md'), (Join-Path $gitFixture 'new.md'))
+    & (Join-Path $PSScriptRoot 'audit-release.ps1') -Root $gitFixture | Out-Null
+    [IO.File]::WriteAllText((Join-Path $gitFixture 'new.md'), $samples[1][1])
+    $rejected = $false
+    try { & (Join-Path $PSScriptRoot 'audit-release.ps1') -Root $gitFixture | Out-Null } catch { $rejected = $true }
+    Check $rejected 'Moved source escaped content audit'
     Write-Output 'PASS release safety: six credential families, safe examples, redacted failures, traversal/ADS, private names, missing/binary files, linked parents, Unicode Git paths and tracked ignored files'
 }
 finally {

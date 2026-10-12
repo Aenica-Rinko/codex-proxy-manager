@@ -1,4 +1,34 @@
-# v0.10.2 预发布说明
+# v0.10.3 目录整理预览版
+
+作者：Rinko · GPL-3.0-only · Windows x64 · [发布页](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.3)。
+
+- 应用集中到 `app/`，启动文件固定为 `CodexProxyManager.exe`，升级不再更改入口文件名。
+- 产品源码、测试、自动化脚本分到 `src/`、`tests/`、`scripts/`；文档、示例和维护工具分别收纳。
+- 发布包根目录保持简单，完整对应源码放入 `source/`，仍可独立重新编译和测试。
+- 发布产物统一到 `artifacts/releases/`，旧 EXE、运行目录和旧包可通过迁移脚本归档到 `artifacts/legacy-layout/`，保留恢复可能。
+- 个人配置、节点、收藏和日志保留原用户目录。本次不改变代理路由，不自动启动应用，不声称修复 Store/游戏联网变慢的问题。
+
+## 下载与首次使用
+
+选择 `CodexProxyManager-v0.10.3-manager-only-preview.zip`，同名 `.zip.sha256` 用于校验。完整解压后打开根目录的 `CodexProxyManager.exe`，不要只取出 EXE。包内含说明、恢复工具、许可证、对应源码及构建脚本；不含 Mihomo 核心、规则库、节点、订阅或任何私人配置。
+
+按 [快速入门](QUICKSTART.md) 准备运行文件并导入自己的代理来源。打开面板不自动启动应用；完全退出目标应用后，手动点击“启动应用”。这不是安装器，没有自动更新或代码签名。
+
+## 从旧版升级
+
+先保存工作、停止代理会话，并从托盘退出旧管理器。将新版完整解压到新目录，按快速入门准备核心和规则，再把快捷方式改为指向 `CodexProxyManager.exe`。原用户数据目录与数据格式不变，不需要删除节点、设置或收藏。
+
+现有源码目录用户见 [迁移说明](FILE_LAYOUT.md)。本版不覆盖历史 v0.10.2 附件，旧版仍保留供需要时回退。
+
+## 已知问题与验证边界
+
+**启动应用后 Microsoft Store 或游戏联网可能变慢的问题仍未定位和修复。** 本版主要整理文件结构，不宣称改善代理速度或解决网络兼容性问题。独立干净 Windows、真实服务和高 DPI 验收仍未全部完成，因此继续以预览版发布。
+
+反馈请到 [GitHub Issues](https://github.com/Aenica-Rinko/codex-proxy-manager/issues)，仅提供版本、复现步骤和经过检查的脱敏信息；不要上传节点链接、订阅、密钥、原始日志或私人备份。
+
+---
+
+# v0.10.2 历史预发布说明
 
 作者：Rinko。许可证：GPL-3.0-only。这是面向早期测试用户的管理器预览版，不是 v1.0 稳定版。[发布页面与下载附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.2)。
 
@@ -28,7 +58,7 @@
 ## 第一次使用
 
 1. 完整解压 ZIP，不要在压缩包内直接打开 EXE。
-2. 按 [快速入门](QUICKSTART.md) 准备核心与规则文件，打开 `CodexProxyManager.v0.10.2.exe`。
+2. 按该版本随附的快速入门准备核心与规则文件，打开 `CodexProxyManager.v0.10.2.exe`（历史版本文件名）。
 3. 完成文件检查，导入自己的代理来源。保存后应停留在面板，不启动应用。
 4. 完全退出目标应用，再手动点击“启动应用”；用实际请求确认连接。
 5. 点击“停止专用代理”结束会话。若目标应用仍运行，它仍保留启动时的代理参数，需要完全退出后再重新打开。

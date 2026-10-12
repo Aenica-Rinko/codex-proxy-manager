@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-safety.ps1')
 $root = Split-Path -Parent $PSScriptRoot
 $version = Get-ManagerVersion
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'dist' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'artifacts/releases' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $destination = (Resolve-Path -LiteralPath $OutputDirectory).Path
 $packageName = 'CodexProxyManager-v' + $version + '-manager-only-preview'
@@ -16,25 +16,24 @@ $stage = Join-Path $scratch $packageName
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
     # Explicit allowlist only: never recursively copy the workspace or runtime/user directories.
-    $files = @('LICENSE','README.md','QUICKSTART.md','USER_GUIDE.md','DEVELOPMENT.md','PRIVACY.md','ARCHITECTURE.md',
-        'RELEASE_CHECKLIST.md','RELEASE_NOTES.md','ACCEPTANCE.md','THIRD_PARTY_NOTICES.md',
-        'config.example.yaml','Restore Codex Network.cmd','restore_codex_network.ps1') +
-        @($ManagerReleaseSourceFiles | ForEach-Object { 'manager/' + $_ })
-    New-Item -ItemType Directory -Path (Join-Path $stage 'manager') | Out-Null
-    Assert-ReleaseSafety -Root $root -RelativePaths $files
-    foreach ($name in $files) {
-        $item = Get-Item -LiteralPath (Join-Path $root $name)
+    $map = Get-PackageFileMap
+    $files = @($map.Keys)
+    Assert-ReleaseSafety -Root $root -RelativePaths $ManagerReleaseSourceFiles
+    foreach ($entry in $map.GetEnumerator()) {
+        $item = Get-Item -LiteralPath (Join-Path $root $entry.Value)
         if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Release inputs must be regular files.' }
-        Copy-Item -LiteralPath $item.FullName -Destination (Join-Path $stage $name)
+        $destinationFile = Join-Path $stage $entry.Key
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destinationFile) -Force | Out-Null
+        Copy-Item -LiteralPath $item.FullName -Destination $destinationFile
     }
     # Build from the exact source snapshot shipped beside the executable.
     Assert-ReleaseSafety -Root $stage -RelativePaths $files
-    & (Join-Path $stage 'manager/build.ps1') -OutputDirectory $stage | Out-Null
-    $exe = 'CodexProxyManager.v' + $version + '.exe'
+    & (Join-Path $stage 'source/scripts/build.ps1') -OutputDirectory $stage | Out-Null
+    $exe = 'CodexProxyManager.exe'
     $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $stage $exe)).FileVersion
     if ($fileVersion -ne ($version + '.0')) { throw 'Built version does not match release version.' }
     $manifest = [ordered]@{ version = $version; channel = 'manager-only-preview'; license = 'GPL-3.0-only';
-        author = 'Rinko'; includesRuntime = $false; includesCorrespondingSource = $true; sourceDirectory = 'manager'; files = @() }
+        author = 'Rinko'; includesRuntime = $false; includesCorrespondingSource = $true; sourceDirectory = 'source'; files = @() }
     foreach ($name in ($files + $exe | Sort-Object)) {
         $manifest.files += [ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant() }
     }

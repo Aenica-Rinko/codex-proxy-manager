@@ -7,7 +7,7 @@ The locally used core self-reports v1.19.24; this is not provenance verification
 The manager's original code, scripts and documentation are licensed under
 GPL-3.0-only. Copyright (c) 2026 Rinko. See LICENSE for the complete terms.
 Newly generated packages include the corresponding manager source and build
-scripts in manager/. This does not relicense any third-party component or
+scripts in source/ (src/, tests/ and scripts/). This does not relicense any third-party component or
 declare this preview a completed public release. Earlier packages have not
 been retroactively updated and must not be reused as public release artifacts.
 Before publishing a full runtime bundle, audit the exact core and geodata assets,

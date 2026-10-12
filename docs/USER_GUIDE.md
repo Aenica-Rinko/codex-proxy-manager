@@ -1,6 +1,8 @@
 # 详细使用手册
 
-首次安装请先完成 [快速入门](QUICKSTART.md)。产品概览见 [README](README.md)，隐私说明见 [PRIVACY](PRIVACY.md)。
+首次安装请先完成 [快速入门](QUICKSTART.md)。产品概览见 [README](../README.md)，隐私说明见 [PRIVACY](PRIVACY.md)。
+
+本地源码构建请从 `app/` 启动；发布 ZIP 请从解压根目录启动。下文 EXE 命令均以应用目录为工作目录。目录结构和旧版本迁移见 [FILE_LAYOUT.md](FILE_LAYOUT.md)。
 
 ## 数据位置
 
@@ -63,7 +65,7 @@ v0.10.1 中的“测试外部控制接口”在后台检查，单个请求的连
 运行中需要新增或切换档案时，先点击“停止专用代理”，再点击“管理代理档案”。也可以退出管理器后执行：
 
 ```powershell
-& '.\CodexProxyManager.v0.10.2.exe' --setup
+& '.\CodexProxyManager.exe' --setup
 ```
 
 ## 日常使用
@@ -106,7 +108,7 @@ v0.10.1 中的“测试外部控制接口”在后台检查，单个请求的连
 也可以单独打开诊断窗口，无需启动代理或关闭正在运行的管理器：
 
 ```powershell
-& '.\CodexProxyManager.v0.10.2.exe' --diagnostics
+& '.\CodexProxyManager.exe' --diagnostics
 ```
 
 单独诊断读取已保存的当前应用与档案；无活动核心时跳过控制接口和外网探测。它不会启动正常管理器会话或保存设置。
@@ -115,4 +117,4 @@ v0.10.1 中的“测试外部控制接口”在后台检查，单个请求的连
 
 运行期间会启动独立 watchdog。若管理器异常退出，watchdog 会停止本项目启动的代理核心。新状态包含 `NetworkMode: process`，停止、恢复脚本和 watchdog 均跳过 Windows 代理写入；旧版状态仍支持恢复，且只在系统代理仍指向本项目时恢复。旧 watchdog 发现状态已属于下一次会话时直接退出。
 
-如果网络仍有异常，运行 `Restore Codex Network.cmd`。恢复脚本同时兼容旧版项目目录状态和新版 `%LOCALAPPDATA%` 状态。
+如果网络仍有异常，在应用目录运行 `tools/Restore Codex Network.cmd`。恢复脚本兼容应用目录中的旧状态和 `%LOCALAPPDATA%` 状态；它不是日常启动入口，也不会在升级时自动执行。

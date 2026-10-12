@@ -20,21 +20,24 @@ jobs:
         with:
           persist-credentials: false
       - name: Build manager
-        run: ./manager/build.ps1
+        run: ./scripts/build.ps1
       - name: Test release safety checks
-        run: ./manager/test-release-safety.ps1
+        run: ./scripts/test-release-safety.ps1
       - name: Audit release candidates (working tree only)
-        run: ./manager/audit-release.ps1
+        run: ./scripts/audit-release.ps1
       - name: Run offline unit tests
-        run: ./manager/test.ps1 -UnitOnly
+        run: ./scripts/test.ps1 -UnitOnly
       - name: Verify packaging boundaries
-        run: ./manager/test-package.ps1
+        run: ./scripts/test-package.ps1
+      - name: Verify recoverable layout migration
+        run: ./scripts/test-layout.ps1
       - name: Verify Windows PowerShell compatibility
         shell: powershell
         run: |
-          ./manager/test-release-safety.ps1
-          ./manager/test.ps1 -UnitOnly
-          ./manager/test-package.ps1
+          ./scripts/test-release-safety.ps1
+          ./scripts/test.ps1 -UnitOnly
+          ./scripts/test-package.ps1
+          ./scripts/test-layout.ps1
       - name: Build manager-only preview
-        run: ./manager/package.ps1
+        run: ./scripts/package.ps1
       # No release publishing or artifact upload until the owner approves public distribution.

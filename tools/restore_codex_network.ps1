@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $userDataRoot = Join-Path $env:LOCALAPPDATA 'CodexProxyManager'
 $userSettingsFile = Join-Path $userDataRoot 'settings.json'
 $userStateFile = Join-Path $userDataRoot 'manager-state.json'
@@ -81,11 +81,12 @@ try {
 
     if ($message -notlike 'Process-only*') { Refresh-InternetSettings }
 
-    $projectCorePath = Join-Path $projectRoot 'runtime\mihomo.exe'
+    # A source checkout uses app/runtime; a portable package uses runtime.
+    $projectCorePaths = @((Join-Path $projectRoot 'runtime\mihomo.exe'),
+        (Join-Path $projectRoot 'app\runtime\mihomo.exe'))
     $projectCores = Get-CimInstance Win32_Process -Filter "Name='mihomo.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.CommandLine -and
-            $_.CommandLine.IndexOf($projectCorePath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+            $_.ExecutablePath -and $_.ExecutablePath -in $projectCorePaths
         }
     foreach ($process in $projectCores) {
         Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue

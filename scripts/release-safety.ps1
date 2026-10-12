@@ -38,7 +38,7 @@ function Get-ReleaseSafetyFindings {
                     $leaf = [IO.Path]::GetFileName($path)
                     $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
                     $file = Get-Item -LiteralPath $path -Force -ErrorAction Stop
-                    if ($normalized -match '(?i)(^|/)(\.git|profiles|runtime|dist|logs|core-data)(/|$)' -or
+                    if ($normalized -match '(?i)(^|/)(\.git|app|artifacts|profiles|runtime|dist|logs|core-data)(/|$)' -or
                         $leaf -match '(?i)^(settings|node-preferences|manager-state|proxy-state)\.json$' -or
                         $leaf -match '(?i)^\.env(?:\.|$)') { $rule = 'private-or-runtime-input' }
                     elseif ($file.PSIsContainer -or $file.Length -gt 8MB) { $rule = 'unsupported-size-or-type' }

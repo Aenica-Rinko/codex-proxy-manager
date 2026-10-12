@@ -81,7 +81,7 @@ namespace CodexProxyManager
             text.AppendLine();
             text.AppendLine("1. 准备运行文件");
             text.AppendLine("解压到可管理的目录。仅管理器预发布包不含核心和规则库。");
-            text.AppendLine("按随包 QUICKSTART.md 的来源说明准备 Windows x64 核心和规则文件，放入上述位置，再点重新检查。");
+            text.AppendLine("按随包 docs/QUICKSTART.md 的来源说明准备 Windows x64 核心和规则文件，放入上述位置，再点重新检查。");
             text.AppendLine();
             text.AppendLine("2. 选择你的代理来源");
             text.AppendLine("• 有订阅 URL 或分享链接：在档案管理器选择对应来源，无需同时运行其他客户端。");

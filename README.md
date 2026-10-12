@@ -4,13 +4,19 @@
 
 一个由 **Rinko** 维护的 Windows 桌面代理管理器，内置 Codex 启动入口。可以导入自己的订阅或节点，也可以连接现有代理软件，集中查看连接状态、实时流量、节点延迟，并手动启动、停止和切换节点。
 
-> 当前版本：**v0.10.2 预发布**。已通过本地回归及云端构建和测试；独立 Windows 环境验收尚未完成，不是 v1.0 正式版。它不是 OpenAI 官方产品，不提供节点、订阅或账号，也不保证目标服务一定可用。
+> 当前版本：**v0.10.3 目录整理预览版**。独立 Windows 环境验收尚未完成，不是 v1.0 正式版。它不是 OpenAI 官方产品，不提供节点、订阅或账号，也不保证目标服务一定可用。
 
-[快速入门](QUICKSTART.md) · [详细手册](USER_GUIDE.md) · [隐私说明](PRIVACY.md) · [开发与测试](DEVELOPMENT.md) · [预发布与升级说明](RELEASE_NOTES.md)
+[快速入门](docs/QUICKSTART.md) · [详细手册](docs/USER_GUIDE.md) · [隐私说明](docs/PRIVACY.md) · [开发与测试](docs/DEVELOPMENT.md) · [预发布与升级说明](docs/RELEASE_NOTES.md)
 
-**下载：** [v0.10.2 预发布与附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.2)。请选择 `manager-only-preview.zip`；首次使用须自行准备核心、规则库和代理来源。
+**下载：** [v0.10.3 预发布与附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.10.3)。请选择 `CodexProxyManager-v0.10.3-manager-only-preview.zip`，完整解压后运行 `CodexProxyManager.exe`；首次使用须自行准备核心、规则库和代理来源。GitHub 的 Source code ZIP 是源码，不是可运行包。
 
 **已知问题：** 已收到启动应用后 Microsoft Store 加载、游戏联网变慢的反馈，原因尚未定位，当前版本未修复。对这类共存场景敏感的用户建议等待后续更新。如遇到问题，请先保存工作，停止专用代理并完全退出通过管理器启动的目标应用，再对照测试；不要为排障关闭系统安全保护。
+
+## 日常从哪里打开？
+
+本地构建的应用集中在 **`app/`**，双击 `app/CodexProxyManager.exe` 或迁移脚本生成的 `Codex Proxy Manager.lnk`。升级后文件名保持不变；不再在项目根目录堆放带版本号的 EXE。
+
+开发文件分为 `src/`、`tests/`、`scripts/`，文档在 `docs/`，发布包和可恢复的旧文件在 `artifacts/`。私人用户数据仍留在 Windows 用户数据目录。完整目录图与旧目录迁移步骤见 [文件结构说明](docs/FILE_LAYOUT.md)。v0.10.2 历史下载包仍使用旧结构，不会被此修改覆盖。
 
 ## 它解决什么问题？
 
@@ -50,7 +56,7 @@ Clash、Mihomo Party、v2rayN、NekoBox 等软件能否接入，以它们是否�
 ## 如何开始？
 
 1. 获取源码，在仓库根目录运行下方构建命令生成 EXE；若获得维护者提供的管理器预发布包，则先完整解压。源码 ZIP 本身不含 EXE。
-2. 单独准备 Mihomo Windows x64 核心和规则库，按 [快速入门](QUICKSTART.md) 的目录结构放好。本仓库与管理器预发布包不附带这些第三方文件。
+2. 单独准备 Mihomo Windows x64 核心和规则库，按 [快速入门](docs/QUICKSTART.md) 的目录结构放好。本仓库与管理器预发布包不附带这些第三方文件。
 3. 打开管理器，完成文件检查，再添加自己的代理来源；请勿把真实订阅填写到仓库文件中。
 4. 完全退出目标应用，在面板点击“启动应用”。已有进程无法补上这次启动的代理参数。
 5. 查看节点与连接状态，并在目标应用中实际发送一次请求。异常时使用“连接诊断”。
@@ -58,7 +64,7 @@ Clash、Mihomo Party、v2rayN、NekoBox 等软件能否接入，以它们是否�
 构建命令（PowerShell）：
 
 ```powershell
-& '.\manager\build.ps1'
+& '.\scripts\build.ps1'
 ```
 
 目标环境为 Windows x64 和 .NET Framework 4.x；本地验证不代表所有 Windows 10/11 版本均兼容。macOS、Linux、Windows ARM64、任意游戏/UWP 透明代理不在当前验证范围。
@@ -71,21 +77,21 @@ Clash、Mihomo Party、v2rayN、NekoBox 等软件能否接入，以它们是否�
 - 关闭面板会进入托盘；“退出管理器”才会结束管理器。
 - 目标应用退出后，管理器会在检测到退出时自动停止核心。
 - 停止代理后，仍运行的目标应用保留旧代理参数；完全退出后再按需要重新启动。
-- 自动化、搜索、收藏及异常恢复的具体行为见 [详细手册](USER_GUIDE.md)。
+- 自动化、搜索、收藏及异常恢复的具体行为见 [详细手册](docs/USER_GUIDE.md)。
 
 如果其他客户端已启用系统代理、TUN 或 VPN，本项目不会替你关闭它们，也不能保证其他软件的原网络路径未被它们改变。辅助子进程可能继承代理环境变量；这不是严格的进程防火墙。
 
 ## 隐私与安全
 
-真实设置、订阅、节点、日志和缓存保存在 Windows 当前用户的本地应用数据目录下（具体位置见 [隐私说明](PRIVACY.md)），不应进入源码仓库或反馈附件。**这些文件不是加密保险箱；订阅、节点名和原始日志都应视为敏感信息。**
+真实设置、订阅、节点、日志和缓存保存在 Windows 当前用户的本地应用数据目录下（具体位置见 [隐私说明](docs/PRIVACY.md)），不应进入源码仓库或反馈附件。**这些文件不是加密保险箱；订阅、节点名和原始日志都应视为敏感信息。**
 
 管理器不自动上传诊断报告。但连接节点、订阅更新、健康检查和手动测速会产生相应网络请求，不代表没有外部通信。发布前有自动凭据模式检查，仍需人工复核。
 
 ## 反馈与参与
 
-请先查阅 [快速入门中的排障说明](QUICKSTART.md)。需要反馈时，可在 [GitHub Issues](https://github.com/Aenica-Rinko/codex-proxy-manager/issues) 提供管理器版本、问题步骤、预期与实际结果、已检查过的脱敏报告；不要粘贴订阅、分享链接、控制密钥或原始日志。截图请先遮住节点名、地址和个人路径。
+请先查阅 [快速入门中的排障说明](docs/QUICKSTART.md)。需要反馈时，可在 [GitHub Issues](https://github.com/Aenica-Rinko/codex-proxy-manager/issues) 提供管理器版本、问题步骤、预期与实际结果、已检查过的脱敏报告；不要粘贴订阅、分享链接、控制密钥或原始日志。截图请先遮住节点名、地址和个人路径。
 
-本项目以预发布形式开放测试，不要求用户提供真实凭据来复现问题。贡献前请阅读 [开发说明](DEVELOPMENT.md) 和 [发布清单](RELEASE_CHECKLIST.md)。sing-box 后端、多应用并发、安装程序和自动更新只是后续方向，并非已实现功能。
+本项目以预发布形式开放测试，不要求用户提供真实凭据来复现问题。贡献前请阅读 [开发说明](docs/DEVELOPMENT.md) 和 [发布清单](docs/RELEASE_CHECKLIST.md)。sing-box 后端、多应用并发、安装程序和自动更新只是后续方向，并非已实现功能。
 
 ## 许可证
 
@@ -93,4 +99,4 @@ Copyright (c) 2026 Rinko。
 
 本项目自行编写的代码、脚本和文档采用 **GNU GPL 第 3 版（GPL-3.0-only）**，详见 [LICENSE](LICENSE)。允许使用、修改及商业分发；分发受 GPL 约束的版本时，须按条款保留声明并提供对应源码。本程序不提供任何担保。
 
-新生成的管理器包随附对应源码与构建脚本；旧包未自动补齐许可材料，不应直接公开发布。第三方组件保留其原有版权和许可，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+新生成的管理器包随附对应源码与构建脚本；旧包未自动补齐许可材料，不应直接公开发布。第三方组件保留其原有版权和许可，详见 [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)。

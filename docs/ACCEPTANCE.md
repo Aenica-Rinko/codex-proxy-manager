@@ -1,5 +1,16 @@
 # v1.0 前本地验收记录
 
+## v0.10.3 目录重整（2026-10-06，本地）
+
+- 运行应用移至 app，固定入口为 CodexProxyManager.exe；源码、测试、脚本、文档、示例和手动工具分目录管理。源码 C# 与旧版逐文件比较，仅版本号和引导中的文档路径变化；不改变代理路由。
+- 旧运行目录、历史包和入口归档到 artifacts/legacy-layout，而非删除。仅复制三项核心/规则文件，哈希一致；本机现有 settings.json 和 node-preferences.json 在迁移前后字节一致。未把它们复制到源码或发布包。
+- PowerShell 7 完整回归通过：新 app 路径下的核心启停、真实隔离子进程代理参数/环境变量、本机测试上游、连接诊断、异常清理及旧 watchdog 隔离；Windows Internet Settings 前后一致。
+- PowerShell 7 与 Windows PowerShell 5.1 的单元、发布安全、目录迁移、打包测试通过。迁移测试覆盖不复制缓存、哈希一致、可恢复归档、重复执行、冲突保留、目录链接拒绝和运行中进程保护。
+- 发布包精确名单、文件哈希、中文路径解压后独立构建与离线测试、源码根目录防覆盖、私人文件排除检查通过。文档相对链接及本机固定快捷方式检查通过。
+- 本轮未进行 GUI 人工验收、真实订阅/服务测试或独立干净 Windows 验收；未修复 Store/游戏变慢问题。工作流路径已更新，但本轮没有推送 GitHub、运行云端 CI 或创建 Release。
+
+以下为此前版本的历史记录，不代表当前所有验收门槛已通过。
+
 首次记录：2026-09-06；最近更新：2026-09-09。当前准备版本：v0.10.2。下方早期结果保留其执行时点，最新状态见“v0.10.2 发布准备复核”。
 
 结论：本机检查通过，但尚不能宣布 v1.0 或正式开源发布。本文件记录测试范围，不是安全认证或第三方应用全面兼容保证。
@@ -92,12 +103,12 @@
 ## 复现入口
 
 ```powershell
-& '.\manager\build.ps1'
-& '.\manager\test-release-safety.ps1'
-& '.\manager\audit-release.ps1'
-& '.\manager\test.ps1' -UnitOnly
-& '.\manager\test.ps1'
-& '.\manager\test-package.ps1'
+& '.\scripts\build.ps1'
+& '.\scripts\test-release-safety.ps1'
+& '.\scripts\audit-release.ps1'
+& '.\scripts\test.ps1' -UnitOnly
+& '.\scripts\test.ps1'
+& '.\scripts\test-package.ps1'
 ```
 
 完整回归依赖本机已安装 Codex 和项目 runtime；仅单元测试/打包检查不依赖这些资产。下一阶段先补足上述验收和所有者决定，再考虑 v1.0；不要只修改版本号。
