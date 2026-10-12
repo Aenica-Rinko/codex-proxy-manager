@@ -14,6 +14,10 @@ namespace CodexProxyManager
         public string Executable { get; set; }
         public string LaunchMode { get; set; }
         public string ProfileId { get; set; }
+        // Missing in old settings: request the WebRTC restriction on the next launch.
+        public bool? LimitWebRtc { get; set; }
+        public bool RestrictBrowserDns { get; set; }
+        public bool DisableQuic { get; set; }
         public override string ToString() { return Name; }
     }
 

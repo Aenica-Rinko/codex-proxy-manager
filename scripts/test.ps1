@@ -1,4 +1,4 @@
-param([switch]$UnitOnly)
+param([switch]$UnitOnly, [string]$BrowserExecutable)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'build-common.ps1')
 $root = Split-Path -Parent $PSScriptRoot
@@ -13,7 +13,8 @@ try {
         /reference:System.Web.Extensions.dll /reference:System.Windows.Forms.dll $sources
     if ($LASTEXITCODE -ne 0) { throw 'Regression test build failed' }
     $applicationRoot = Join-Path $root 'app'
-    if ($UnitOnly) { & $output $applicationRoot --unit-only }
+    if ($BrowserExecutable) { & $output --privacy-browser-selftest $BrowserExecutable }
+    elseif ($UnitOnly) { & $output $applicationRoot --unit-only }
     else { & $output $applicationRoot }
     if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed' }
 }

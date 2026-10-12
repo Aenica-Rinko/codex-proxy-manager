@@ -17,7 +17,7 @@ namespace CodexProxyManager
 {
     internal static class AppInfo
     {
-        internal const string Version = "0.10.3";
+        internal const string Version = "0.11.0";
         internal const string DisplayVersion = "v" + Version;
         internal const string Title = "Codex Proxy Manager " + DisplayVersion;
     }

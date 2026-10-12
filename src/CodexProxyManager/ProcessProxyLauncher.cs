@@ -15,6 +15,13 @@ namespace CodexProxyManager
 
         internal static ProcessStartInfo BuildStartInfo(string executable, int port, string mode)
         {
+            return BuildStartInfo(executable, port, new ManagedApplication { LaunchMode = mode });
+        }
+
+        internal static ProcessStartInfo BuildStartInfo(string executable, int port, ManagedApplication application)
+        {
+            if (application == null) throw new ArgumentNullException("application");
+            string mode = application.LaunchMode;
             if (!File.Exists(executable)) throw new FileNotFoundException("找不到应用程序。", executable);
             if (mode != "chromium" && mode != "environment") throw new ArgumentException("不支持的启动模式。", "mode");
             if (port < 1024 || port > 65535) throw new ArgumentOutOfRangeException("port");
@@ -24,6 +31,7 @@ namespace CodexProxyManager
             info.WorkingDirectory = Path.GetDirectoryName(executable);
             info.Arguments = mode == "chromium" ? "--proxy-server=" + endpoint +
                 " --proxy-bypass-list=\"localhost;127.0.0.1;[::1]\"" : "";
+            info.Arguments += PrivacyProtection.Arguments(application);
             foreach (string name in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY" })
                 info.EnvironmentVariables[name] = endpoint;
             // Do not inherit a wildcard or domain bypass from the manager's own launcher.

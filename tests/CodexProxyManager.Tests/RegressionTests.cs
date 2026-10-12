@@ -73,6 +73,18 @@ namespace CodexProxyManager
                 RecoveryWatchdog.Run(args);
                 return 0;
             }
+            if (args.Length == 2 && args[0] == "--privacy-browser-selftest")
+            {
+                try
+                {
+                    var app = new ManagedApplication { Id = "browser-test", Name = "Fixture browser", Executable = args[1],
+                        LaunchMode = "chromium", LimitWebRtc = true, RestrictBrowserDns = true, DisableQuic = true };
+                    var result = BrowserPrivacyProbe.Run(app, System.Threading.CancellationToken.None).GetAwaiter().GetResult();
+                    Console.WriteLine(result.Message);
+                    return result.Passed ? 0 : 1;
+                }
+                catch { Console.WriteLine("FAIL isolated browser behavior test; no private error details emitted."); return 1; }
+            }
 
             string root = Path.GetFullPath(args[0]);
             string before = RegistrySnapshot();
@@ -84,6 +96,8 @@ namespace CodexProxyManager
                 NodeCatalogTests.Run(scratch);
                 OnboardingTests.Run(scratch);
                 ControllerProbeTests.Run(scratch);
+                PrivacyTests.Run(scratch);
+                PrivacyUiTests.Run(scratch);
                 if (Array.IndexOf(args, "--unit-only") >= 0)
                 {
                     Assert(before == RegistrySnapshot(), "Unit tests changed Windows proxy settings");

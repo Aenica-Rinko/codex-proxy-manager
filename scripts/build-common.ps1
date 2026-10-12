@@ -1,11 +1,12 @@
 $ManagerSourceFiles = @(
     'AppInfo.cs','GettingStartedForm.cs','ControllerProbe.cs','NodeCatalog.cs','OpenSourceFoundation.cs',
-    'ProfileManager.cs','ProcessProxyLauncher.cs','ApplicationConfiguration.cs',
-    'ApplicationManagerForm.cs','Diagnostics.cs','DiagnosticsForm.cs','CodexProxyManager.cs'
+    'ProfileManager.cs','ProcessProxyLauncher.cs','ApplicationConfiguration.cs','PrivacyProtection.cs',
+    'ApplicationManagerForm.cs','UiButton.cs','DashboardForm.cs','PrivacyLog.cs','PrivacyCenterForm.cs','BrowserPrivacyProbe.cs',
+    'Diagnostics.cs','DiagnosticsForm.cs','CodexProxyManager.cs'
 )
 $ManagerSourceFiles = @($ManagerSourceFiles | ForEach-Object { 'src/CodexProxyManager/' + $_ })
 $ManagerTestFiles = @(
-    'NodeCatalogTests.cs','OnboardingTests.cs','ControllerProbeTests.cs','DiagnosticsTests.cs','RegressionTests.cs'
+    'NodeCatalogTests.cs','OnboardingTests.cs','ControllerProbeTests.cs','DiagnosticsTests.cs','PrivacyTests.cs','PrivacyUiTests.cs','RegressionTests.cs'
 ) | ForEach-Object { 'tests/CodexProxyManager.Tests/' + $_ }
 $ManagerBuildFiles = @(
     'build-common.ps1','build.ps1','test.ps1','package.ps1','test-package.ps1',

@@ -16,6 +16,10 @@ namespace CodexProxyManager
         private readonly ComboBox profileBox = new ComboBox();
         private readonly Button browseButton;
         private readonly Label status;
+        private readonly CheckBox webRtcBox = new CheckBox();
+        private readonly CheckBox dnsBox = new CheckBox();
+        private readonly CheckBox quicBox = new CheckBox();
+        private readonly Label privacyStatus;
         private bool changed;
 
         internal ApplicationManagerForm(string userRoot)
@@ -23,7 +27,7 @@ namespace CodexProxyManager
             settingsPath = Path.Combine(userRoot, "settings.json");
             settings = StartupConfiguration.ReadSettings(settingsPath);
             Text = "应用管理 · " + AppInfo.DisplayVersion;
-            ClientSize = new Size(860, 510);
+            ClientSize = new Size(860, 682);
             Font = new Font("Segoe UI", 10F);
             BackColor = Color.FromArgb(13, 17, 23);
             ForeColor = Color.FromArgb(230, 237, 243);
@@ -33,13 +37,13 @@ namespace CodexProxyManager
             StartPosition = FormStartPosition.CenterParent;
             LabelAt("选择应用，绑定它使用的代理档案", 22, 16, 800, 38, 19);
             LabelAt("每次运行一个应用会话；Windows 系统代理保持原样。", 24, 59, 800, 28, 10);
-            apps.SetBounds(24, 105, 235, 295);
+            apps.SetBounds(24, 105, 235, 463);
             apps.BackColor = Color.FromArgb(22, 27, 34);
             apps.ForeColor = ForeColor;
             apps.IntegralHeight = false;
             Controls.Add(apps);
-            Button newButton = ButtonAt("添加应用", 24, 416, 110);
-            Button deleteButton = ButtonAt("移除应用", 149, 416, 110);
+            Button newButton = ButtonAt("添加应用", 24, 604, 110);
+            Button deleteButton = ButtonAt("移除应用", 149, 604, 110);
             newButton.Click += delegate { apps.ClearSelected(); LoadSelection(); nameBox.Focus(); };
             deleteButton.Click += DeleteSelection;
             LabelAt("应用名称", 284, 106, 100, 27, 10);
@@ -64,16 +68,25 @@ namespace CodexProxyManager
             profileBox.Items.Add(new ProfileChoice { Name = "跟随当前代理档案" });
             foreach (ProxyProfileDefinition profile in settings.Profiles)
                 profileBox.Items.Add(new ProfileChoice { Id = profile.Id, Name = profile.Name });
-            LabelAt("Chromium/Electron 模式适用于支持代理启动参数的应用。环境变量模式只对识别 HTTP_PROXY 等设置的程序生效。", 284, 308, 544, 55, 9);
-            LabelAt("启动前须完全退出所选应用。游戏、UWP 应用及不支持上述方式的程序，不能仅靠添加 EXE 获得代理。", 284, 369, 544, 49, 9);
-            Button save = ButtonAt("保存并设为当前", 390, 430, 184);
-            save.BackColor = Color.FromArgb(35, 134, 54);
+            LabelAt("隐私保护 · 仅对支持相应参数的应用生效", 284, 304, 544, 28, 10);
+            CheckAt(webRtcBox, "请求限制 WebRTC 非代理 UDP（默认开启）", 338);
+            CheckAt(dnsBox, "限制浏览器本机 DNS 解析（可选）", 370);
+            CheckAt(quicBox, "关闭 QUIC / HTTP3（可选）", 402);
+            privacyStatus = LabelAt("", 284, 440, 544, 76, 9);
+            LabelAt("WebRTC 限制可能影响语音/视频。DNS 限制可能使内网域名和直连功能不可用；核心及其他进程的 DNS 不在保护范围。", 284, 518, 544, 48, 9);
+            LabelAt("保存后完全退出应用，再点击“启动应用”。应用必须支持所选代理方式；游戏、UWP 及其他不兼容程序不会自动获得保护。", 284, 568, 544, 34, 9);
+            Button save = ButtonAt("保存并设为当前", 390, 604, 184);
+            save.BackColor = Color.FromArgb(31, 111, 235);
             save.Click += SaveSelection;
-            Button close = ButtonAt("关闭", 706, 430, 122);
+            Button close = ButtonAt("关闭", 706, 604, 122);
             close.Click += delegate { Close(); };
-            status = LabelAt("", 24, 474, 804, 26, 9);
+            status = LabelAt("", 24, 650, 804, 26, 9);
             FormClosing += delegate { DialogResult = changed ? DialogResult.OK : DialogResult.Cancel; };
             apps.SelectedIndexChanged += delegate { LoadSelection(); };
+            modeBox.SelectedIndexChanged += delegate { UpdatePrivacyStatus(); };
+            webRtcBox.CheckedChanged += delegate { UpdatePrivacyStatus(); };
+            dnsBox.CheckedChanged += delegate { UpdatePrivacyStatus(); };
+            quicBox.CheckedChanged += delegate { UpdatePrivacyStatus(); };
             RefreshList(settings.ActiveApplicationId);
         }
 
@@ -105,6 +118,10 @@ namespace CodexProxyManager
             browseButton.Enabled = !codex;
             modeBox.Enabled = !codex;
             modeBox.SelectedIndex = app != null && app.LaunchMode == "environment" ? 1 : 0;
+            webRtcBox.Checked = app == null || app.LimitWebRtc != false;
+            dnsBox.Checked = app != null && app.RestrictBrowserDns;
+            quicBox.Checked = app != null && app.DisableQuic;
+            UpdatePrivacyStatus();
             profileBox.SelectedIndex = 0;
             for (int i = 1; i < profileBox.Items.Count; i++)
                 if (app != null && ((ProfileChoice)profileBox.Items[i]).Id == app.ProfileId) profileBox.SelectedIndex = i;
@@ -122,7 +139,10 @@ namespace CodexProxyManager
                     Name = nameBox.Text.Trim(),
                     Executable = previous != null && previous.Id == "codex" ? null : executableBox.Text.Trim(),
                     LaunchMode = modeBox.SelectedIndex == 0 ? "chromium" : "environment",
-                    ProfileId = ((ProfileChoice)profileBox.SelectedItem).Id
+                    ProfileId = ((ProfileChoice)profileBox.SelectedItem).Id,
+                    LimitWebRtc = webRtcBox.Checked,
+                    RestrictBrowserDns = dnsBox.Checked,
+                    DisableQuic = quicBox.Checked
                 };
                 ApplicationConfiguration.Validate(app);
                 if (previous == null) settings.Applications.Add(app);
@@ -173,6 +193,26 @@ namespace CodexProxyManager
             box.SetBounds(x, y, width, 28);
             box.DropDownStyle = ComboBoxStyle.DropDownList;
             Controls.Add(box);
+        }
+
+        private void CheckAt(CheckBox box, string text, int y)
+        {
+            box.Text = text;
+            box.SetBounds(284, y, 544, 30);
+            Controls.Add(box);
+        }
+
+        private void UpdatePrivacyStatus()
+        {
+            bool supported = modeBox.SelectedIndex == 0;
+            webRtcBox.Enabled = dnsBox.Enabled = quicBox.Enabled = supported;
+            if (privacyStatus == null) return;
+            privacyStatus.Text = PrivacyProtection.Describe(new ManagedApplication
+            {
+                LaunchMode = supported ? "chromium" : "environment",
+                LimitWebRtc = webRtcBox.Checked, RestrictBrowserDns = dnsBox.Checked,
+                DisableQuic = quicBox.Checked
+            });
         }
 
         private Button ButtonAt(string text, int x, int y, int width)

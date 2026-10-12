@@ -43,524 +43,6 @@ namespace CodexProxyManager
         public int Connections { get; set; }
     }
 
-    internal sealed class DashboardForm : Form
-    {
-        internal event EventHandler StartRequested;
-        internal event EventHandler StopRequested;
-        internal event EventHandler TestRequested;
-        internal event EventHandler FastestRequested;
-        internal event EventHandler RefreshProvidersRequested;
-        internal event EventHandler ProfilesRequested;
-        internal event EventHandler ApplicationsRequested;
-        internal event EventHandler DiagnosticsRequested;
-        internal event EventHandler OpenLogsRequested;
-        internal event EventHandler ExitRequested;
-        internal event Action<string> NodeSwitchRequested;
-
-        private readonly Label statusValue;
-        private readonly Label nodeValue;
-        private readonly Label downloadValue;
-        private readonly Label uploadValue;
-        private readonly Label downloadTotalValue;
-        private readonly Label uploadTotalValue;
-        private readonly Label connectionsValue;
-        private readonly Label footerValue;
-        private readonly ListView nodeList;
-        private readonly TextBox nodeSearch;
-        private readonly ComboBox nodeSort;
-        private readonly CheckBox favoritesOnly;
-        private readonly Button favoriteButton;
-        private readonly Label nodeCount;
-        private List<NodeInfo> catalog = new List<NodeInfo>();
-        private HashSet<string> favorites = new HashSet<string>(StringComparer.Ordinal);
-        private NodePreferences nodePreferences;
-        private string catalogCurrent;
-        private readonly Button startButton;
-        private readonly Button stopButton;
-        private readonly Button switchButton;
-        private readonly Button testButton;
-        private readonly Button fastestButton;
-        private readonly Button refreshButton;
-        private readonly Button profilesButton;
-        private readonly Button applicationsButton;
-        private readonly Button diagnosticsButton;
-        private string localProxyEndpoint = "127.0.0.1:17890";
-        private string activeProfileName = "默认档案";
-        private bool busy;
-        private bool active;
-
-        internal DashboardForm()
-        {
-            Text = AppInfo.Title;
-            Icon = SystemIcons.Shield;
-            StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(900, 600);
-            Size = new Size(960, 690);
-            BackColor = Color.FromArgb(13, 17, 23);
-            ForeColor = Color.FromArgb(230, 237, 243);
-            Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
-            MaximizeBox = false;
-
-            TableLayoutPanel root = new TableLayoutPanel();
-            root.Dock = DockStyle.Fill;
-            root.Padding = new Padding(24, 20, 24, 18);
-            root.RowCount = 5;
-            root.ColumnCount = 1;
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 132));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            Controls.Add(root);
-
-            Panel header = new Panel { Dock = DockStyle.Fill };
-            Label title = new Label
-            {
-                Text = "Codex Proxy Manager",
-                AutoSize = true,
-                Font = new Font("Segoe UI Semibold", 21F, FontStyle.Bold),
-                ForeColor = Color.White,
-                Location = new Point(0, 0)
-            };
-            Label subtitle = new Label
-            {
-                Text = "应用专用代理 · 系统代理保持原样",
-                AutoSize = true,
-                ForeColor = Color.FromArgb(139, 148, 158),
-                Location = new Point(3, 42)
-            };
-            Label liveBadge = new Label
-            {
-                Text = "● LIVE",
-                AutoSize = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Size = new Size(82, 30),
-                Location = new Point(800, 8),
-                BackColor = Color.FromArgb(26, 69, 45),
-                ForeColor = Color.FromArgb(63, 185, 80),
-                Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold)
-            };
-            header.Controls.Add(title);
-            header.Controls.Add(subtitle);
-            header.Controls.Add(liveBadge);
-            header.Resize += delegate { liveBadge.Left = Math.Max(0, header.ClientSize.Width - liveBadge.Width); };
-            root.Controls.Add(header, 0, 0);
-
-            TableLayoutPanel cards = new TableLayoutPanel();
-            cards.Dock = DockStyle.Fill;
-            cards.ColumnCount = 4;
-            cards.RowCount = 1;
-            cards.Padding = new Padding(0, 6, 0, 12);
-            for (int i = 0; i < 4; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            statusValue = AddCard(cards, 0, "连接状态", "已停止", Color.FromArgb(88, 166, 255));
-            nodeValue = AddCard(cards, 1, "当前节点", "—", Color.FromArgb(210, 168, 255));
-            downloadValue = AddCard(cards, 2, "下载速度", "0 B/s", Color.FromArgb(63, 185, 80));
-            uploadValue = AddCard(cards, 3, "上传速度", "0 B/s", Color.FromArgb(255, 166, 87));
-            root.Controls.Add(cards, 0, 1);
-
-            TableLayoutPanel content = new TableLayoutPanel();
-            content.Dock = DockStyle.Fill;
-            content.ColumnCount = 2;
-            content.RowCount = 1;
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68F));
-            content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32F));
-            root.Controls.Add(content, 0, 2);
-
-            Panel nodesPanel = MakePanel();
-            nodesPanel.Padding = new Padding(16);
-            Label nodesTitle = new Label
-            {
-                Text = "节点列表",
-                Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold),
-                ForeColor = Color.White,
-                Dock = DockStyle.Top,
-                Height = 34
-            };
-            nodeList = new ListView();
-            nodeList.Dock = DockStyle.Fill;
-            nodeList.View = View.Details;
-            nodeList.FullRowSelect = true;
-            nodeList.HideSelection = false;
-            nodeList.BorderStyle = BorderStyle.None;
-            nodeList.BackColor = Color.FromArgb(22, 27, 34);
-            nodeList.ForeColor = Color.FromArgb(230, 237, 243);
-            nodeList.HeaderStyle = ColumnHeaderStyle.Nonclickable;
-            nodeList.MultiSelect = false;
-            nodeList.ShowItemToolTips = true;
-            nodeList.Columns.Add("节点", 240);
-            nodeList.Columns.Add("协议", 80);
-            nodeList.Columns.Add("延迟", 80);
-            nodeList.Columns.Add("状态", 70);
-            nodeList.Columns.Add("收藏", 50);
-            nodeList.SelectedIndexChanged += delegate { UpdateButtons(); };
-            var filters = new TableLayoutPanel { Dock = DockStyle.Top, Height = 38, ColumnCount = 3, RowCount = 1 };
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
-            nodeSearch = new TextBox { Dock = DockStyle.Fill, AccessibleName = "搜索节点名称或协议",
-                BackColor = BackColor, ForeColor = ForeColor };
-            nodeSort = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "节点排序" };
-            nodeSort.Items.AddRange(new object[] { "原始顺序", "名称 A–Z", "延迟从低到高" });
-            nodeSort.SelectedIndex = 0;
-            var clearFilters = MakeButton("清除筛选", Color.FromArgb(48, 54, 61));
-            clearFilters.Dock = DockStyle.Fill;
-            filters.Controls.Add(nodeSearch, 0, 0);
-            filters.Controls.Add(nodeSort, 1, 0);
-            filters.Controls.Add(clearFilters, 2, 0);
-            var favoritesBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, WrapContents = false };
-            favoritesOnly = new CheckBox { Text = "仅看收藏", Width = 105, Height = 30 };
-            favoriteButton = MakeButton("收藏选中节点", Color.FromArgb(137, 87, 229));
-            favoriteButton.Width = 142;
-            favoritesBar.Controls.Add(favoritesOnly);
-            favoritesBar.Controls.Add(favoriteButton);
-            nodeCount = new Label { Dock = DockStyle.Bottom, Height = 42, AutoEllipsis = true };
-            nodeSearch.TextChanged += delegate { RenderNodes(); };
-            nodeSort.SelectedIndexChanged += delegate { RenderNodes(); };
-            favoritesOnly.CheckedChanged += delegate { RenderNodes(); };
-            clearFilters.Click += delegate { nodeSearch.Clear(); favoritesOnly.Checked = false; nodeSort.SelectedIndex = 0; RenderNodes(); };
-            favoriteButton.Click += delegate { ToggleFavorite(); };
-            nodesPanel.Controls.Add(nodeList);
-            nodesPanel.Controls.Add(nodeCount);
-            nodesPanel.Controls.Add(favoritesBar);
-            nodesPanel.Controls.Add(filters);
-            nodesTitle.Text = "节点列表 · 搜索名称或协议";
-            nodesPanel.Controls.Add(nodesTitle);
-            content.Controls.Add(nodesPanel, 0, 0);
-
-            Panel controlsPanel = MakePanel();
-            controlsPanel.Margin = new Padding(12, 0, 0, 0);
-            controlsPanel.Padding = new Padding(16);
-            Label controlsTitle = new Label
-            {
-                Text = "控制中心",
-                Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold),
-                ForeColor = Color.White,
-                Location = new Point(16, 16),
-                Size = new Size(245, 30)
-            };
-            controlsPanel.Controls.Add(controlsTitle);
-            FlowLayoutPanel actions = new FlowLayoutPanel();
-            actions.Location = new Point(16, 52);
-            actions.Size = new Size(245, 225);
-            actions.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            actions.FlowDirection = FlowDirection.LeftToRight;
-            actions.WrapContents = true;
-            actions.AutoScroll = true;
-            actions.Padding = new Padding(0);
-            startButton = MakeButton("启动 Codex", Color.FromArgb(35, 134, 54));
-            stopButton = MakeButton("停止专用代理", Color.FromArgb(218, 54, 51));
-            testButton = MakeButton("测试节点延迟", Color.FromArgb(31, 111, 235));
-            fastestButton = MakeButton("选择最低延迟", Color.FromArgb(26, 127, 100));
-            switchButton = MakeButton("切换到选中节点", Color.FromArgb(137, 87, 229));
-            refreshButton = MakeButton("刷新远程订阅", Color.FromArgb(191, 135, 0));
-            profilesButton = MakeButton("管理代理档案", Color.FromArgb(88, 166, 255));
-            applicationsButton = MakeButton("管理应用", Color.FromArgb(88, 166, 255));
-            diagnosticsButton = MakeButton("连接诊断", Color.FromArgb(31, 111, 235));
-            Button logsButton = MakeButton("打开日志目录", Color.FromArgb(48, 54, 61));
-            Button guideButton = MakeButton("开始使用 / 版本", Color.FromArgb(48, 54, 61));
-            guideButton.Click += delegate
-            {
-                using (var guide = new GettingStartedForm(AppDomain.CurrentDomain.BaseDirectory,
-                    StartupConfiguration.GetUserDataRoot(), false)) guide.ShowDialog(this);
-            };
-            Button exitButton = MakeButton("退出管理器", Color.FromArgb(48, 54, 61));
-            startButton.Click += delegate { if (StartRequested != null) StartRequested(this, EventArgs.Empty); };
-            stopButton.Click += delegate { if (StopRequested != null) StopRequested(this, EventArgs.Empty); };
-            testButton.Click += delegate { if (TestRequested != null) TestRequested(this, EventArgs.Empty); };
-            fastestButton.Click += delegate { if (FastestRequested != null) FastestRequested(this, EventArgs.Empty); };
-            refreshButton.Click += delegate { if (RefreshProvidersRequested != null) RefreshProvidersRequested(this, EventArgs.Empty); };
-            switchButton.Click += delegate
-            {
-                if (nodeList.SelectedItems.Count == 1 && NodeSwitchRequested != null)
-                    NodeSwitchRequested(Convert.ToString(nodeList.SelectedItems[0].Tag));
-            };
-            profilesButton.Click += delegate { if (ProfilesRequested != null) ProfilesRequested(this, EventArgs.Empty); };
-            applicationsButton.Click += delegate { if (ApplicationsRequested != null) ApplicationsRequested(this, EventArgs.Empty); };
-            diagnosticsButton.Click += delegate { if (DiagnosticsRequested != null) DiagnosticsRequested(this, EventArgs.Empty); };
-            logsButton.Click += delegate { if (OpenLogsRequested != null) OpenLogsRequested(this, EventArgs.Empty); };
-            exitButton.Click += delegate { if (ExitRequested != null) ExitRequested(this, EventArgs.Empty); };
-            actions.Controls.Add(startButton);
-            actions.Controls.Add(stopButton);
-            actions.Controls.Add(testButton);
-            actions.Controls.Add(fastestButton);
-            actions.Controls.Add(switchButton);
-            actions.Controls.Add(refreshButton);
-            actions.Controls.Add(profilesButton);
-            actions.Controls.Add(applicationsButton);
-            actions.Controls.Add(diagnosticsButton);
-            actions.Controls.Add(logsButton);
-            actions.Controls.Add(guideButton);
-            actions.Controls.Add(exitButton);
-            controlsPanel.Controls.Add(actions);
-            // Reflow when a scrollbar changes the usable width, not only when the parent resizes.
-            actions.ClientSizeChanged += delegate
-            {
-                int width = Math.Max(100, (actions.ClientSize.Width - 8) / 2);
-                actions.SuspendLayout();
-                foreach (Control control in actions.Controls)
-                    if (control.Width != width) control.Width = width;
-                actions.ResumeLayout();
-            };
-            controlsPanel.Resize += delegate
-            {
-                actions.Size = new Size(Math.Max(120, controlsPanel.ClientSize.Width - 32),
-                    Math.Max(120, controlsPanel.ClientSize.Height - 68));
-            };
-            content.Controls.Add(controlsPanel, 1, 0);
-
-            TableLayoutPanel totals = new TableLayoutPanel();
-            totals.Dock = DockStyle.Fill;
-            totals.ColumnCount = 3;
-            totals.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            totals.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            totals.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
-            downloadTotalValue = AddInlineStat(totals, 0, "累计下载", "0 B");
-            uploadTotalValue = AddInlineStat(totals, 1, "累计上传", "0 B");
-            connectionsValue = AddInlineStat(totals, 2, "活动连接", "0");
-            root.Controls.Add(totals, 0, 3);
-
-            footerValue = new Label
-            {
-                Text = "本地代理 127.0.0.1:17890 · 关闭窗口会最小化到托盘",
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(110, 118, 129),
-                Font = new Font("Segoe UI", 9F)
-            };
-            root.Controls.Add(footerValue, 0, 4);
-            UpdateStatus(false, "已停止", "—", 0, 0, 0, 0, 0);
-        }
-
-        private static Panel MakePanel()
-        {
-            return new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(22, 27, 34),
-                Margin = new Padding(0)
-            };
-        }
-
-        private static Label AddCard(TableLayoutPanel table, int column, string caption, string value, Color accent)
-        {
-            Panel card = MakePanel();
-            card.Margin = new Padding(column == 0 ? 0 : 6, 0, column == 3 ? 0 : 6, 0);
-            Label captionLabel = new Label
-            {
-                Text = caption,
-                AutoSize = true,
-                ForeColor = Color.FromArgb(139, 148, 158),
-                Location = new Point(16, 14)
-            };
-            Label valueLabel = new Label
-            {
-                Text = value,
-                AutoEllipsis = true,
-                ForeColor = accent,
-                Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
-                Location = new Point(16, 46),
-                Size = new Size(190, 38)
-            };
-            card.Controls.Add(captionLabel);
-            card.Controls.Add(valueLabel);
-            table.Controls.Add(card, column, 0);
-            return valueLabel;
-        }
-
-        private static Label AddInlineStat(TableLayoutPanel table, int column, string caption, string value)
-        {
-            Panel panel = new Panel { Dock = DockStyle.Fill };
-            Label captionLabel = new Label
-            {
-                Text = caption,
-                ForeColor = Color.FromArgb(139, 148, 158),
-                Location = new Point(0, 16),
-                AutoSize = true
-            };
-            Label valueLabel = new Label
-            {
-                Text = value,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold),
-                Location = new Point(82, 14),
-                AutoSize = true
-            };
-            panel.Controls.Add(captionLabel);
-            panel.Controls.Add(valueLabel);
-            table.Controls.Add(panel, column, 0);
-            return valueLabel;
-        }
-
-        private static Button MakeButton(string text, Color color)
-        {
-            Button button = new Button();
-            button.Text = text;
-            button.Width = 118;
-            button.Height = 34;
-            button.Margin = new Padding(0, 0, 4, 4);
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderSize = 0;
-            button.BackColor = color;
-            button.ForeColor = Color.White;
-            button.Cursor = Cursors.Hand;
-            return button;
-        }
-
-        internal void UpdateStatus(bool isActive, string status, string node, double downBytes, double upBytes,
-            long downTotal, long upTotal, int connections)
-        {
-            active = isActive;
-            statusValue.Text = status;
-            statusValue.ForeColor = isActive ? Color.FromArgb(63, 185, 80) : Color.FromArgb(248, 81, 73);
-            nodeValue.Text = String.IsNullOrWhiteSpace(node) ? "—" : CleanNodeName(node);
-            downloadValue.Text = FormatRate(downBytes);
-            uploadValue.Text = FormatRate(upBytes);
-            downloadTotalValue.Text = FormatBytes(downTotal);
-            uploadTotalValue.Text = FormatBytes(upTotal);
-            connectionsValue.Text = connections.ToString();
-            footerValue.Text = isActive
-                ? "档案：" + activeProfileName + " · 本地代理 " + localProxyEndpoint
-                : "档案：" + activeProfileName + " · 专用代理已停止";
-            UpdateButtons();
-        }
-
-        internal void SetLocalProxyEndpoint(string endpoint)
-        {
-            if (!String.IsNullOrWhiteSpace(endpoint)) localProxyEndpoint = endpoint;
-            if (!active) footerValue.Text = "档案：" + activeProfileName + " · 专用代理已停止";
-        }
-
-        internal void SetProfileName(string profileName)
-        {
-            if (!String.IsNullOrWhiteSpace(profileName)) activeProfileName = profileName;
-            footerValue.Text = active
-                ? "档案：" + activeProfileName + " · 本地代理 " + localProxyEndpoint
-                : "档案：" + activeProfileName + " · 专用代理已停止";
-        }
-
-        internal void SetApplicationName(string name)
-        {
-            Text = AppInfo.Title + " · " + name;
-            startButton.Text = "启动应用";
-        }
-
-        internal void UpdateNodes(IList<NodeInfo> nodes, string current)
-        {
-            catalog = nodes.Select(n => new NodeInfo { Name = n.Name, Type = n.Type, Delay = n.Delay }).ToList();
-            catalogCurrent = current;
-            RenderNodes();
-        }
-
-        internal void SetNodeProfile(string userRoot, string profileId)
-        {
-            nodePreferences = new NodePreferences(Path.Combine(userRoot, "node-preferences.json"), profileId);
-            catalog.Clear();
-            catalogCurrent = null;
-            favorites.Clear();
-            nodeSearch.Clear();
-            favoritesOnly.Checked = false;
-            nodeSort.SelectedIndex = 0;
-            try { favorites = nodePreferences.Load(); RenderNodes(); }
-            catch { RenderNodes(); nodeCount.Text = "收藏文件无法读取；原文件保留，节点功能仍可使用。"; }
-        }
-
-        private void ToggleFavorite()
-        {
-            if (nodeList.SelectedItems.Count != 1) return;
-            string name = Convert.ToString(nodeList.SelectedItems[0].Tag);
-            try
-            {
-                if (nodePreferences != null) favorites = nodePreferences.Toggle(name);
-                else if (!favorites.Remove(name)) favorites.Add(name); // Preview has no persistent state.
-                RenderNodes();
-            }
-            catch { nodeCount.Text = "收藏未保存；请检查用户目录权限或收藏文件，原文件未覆盖。"; }
-        }
-
-        private void RenderNodes()
-        {
-            string selected = null;
-            if (nodeList.SelectedItems.Count == 1) selected = Convert.ToString(nodeList.SelectedItems[0].Tag);
-            var visible = NodeCatalog.Select(catalog, nodeSearch.Text, favoritesOnly.Checked, favorites, nodeSort.SelectedIndex);
-            nodeList.BeginUpdate();
-            nodeList.Items.Clear();
-            foreach (NodeInfo node in visible)
-            {
-                bool isCurrent = String.Equals(node.Name, catalogCurrent, StringComparison.Ordinal);
-                ListViewItem item = new ListViewItem(node.Name);
-                item.SubItems.Add(node.Type ?? "—");
-                item.SubItems.Add(node.Delay > 0 ? node.Delay + " ms" : "未测试");
-                item.SubItems.Add(isCurrent ? "使用中" : "待机");
-                item.SubItems.Add(favorites.Contains(node.Name) ? "★" : "");
-                item.ToolTipText = node.Name;
-                item.Tag = node.Name;
-                if (isCurrent)
-                {
-                    item.ForeColor = Color.FromArgb(63, 185, 80);
-                }
-                nodeList.Items.Add(item);
-                if (String.Equals(selected, node.Name, StringComparison.Ordinal)) item.Selected = true;
-            }
-            nodeList.EndUpdate();
-            nodeCount.Text = "显示 " + visible.Count + " / " + catalog.Count + " 个节点" +
-                (visible.Count == 0 && catalog.Count > 0 ? " · 没有匹配项，可清除筛选" : "") +
-                (!String.IsNullOrEmpty(catalogCurrent) && !visible.Any(n => n.Name == catalogCurrent) ? "\r\n当前节点不在列表中；筛选不会改变连接。" : "");
-            UpdateButtons();
-        }
-
-        internal void SetBusy(bool value, string message)
-        {
-            busy = value;
-            if (!String.IsNullOrWhiteSpace(message)) footerValue.Text = message;
-            UpdateButtons();
-        }
-
-        internal void ShowDashboard()
-        {
-            if (!Visible) Show();
-            WindowState = FormWindowState.Normal;
-            Activate();
-            BringToFront();
-        }
-
-        private void UpdateButtons()
-        {
-            if (startButton == null) return;
-            favoriteButton.Enabled = !busy && nodeList.SelectedItems.Count == 1;
-            favoriteButton.Text = nodeList.SelectedItems.Count == 1 && favorites.Contains(Convert.ToString(nodeList.SelectedItems[0].Tag))
-                ? "取消选中收藏" : "收藏选中节点";
-            startButton.Enabled = !busy && !active;
-            stopButton.Enabled = !busy && active;
-            testButton.Enabled = !busy && active;
-            fastestButton.Enabled = !busy && active;
-            switchButton.Enabled = !busy && active && nodeList.SelectedItems.Count == 1;
-            refreshButton.Enabled = !busy && active;
-            profilesButton.Enabled = !busy && !active;
-            applicationsButton.Enabled = !busy && !active;
-            diagnosticsButton.Enabled = !busy;
-        }
-
-        private static string CleanNodeName(string value)
-        {
-            if (String.IsNullOrWhiteSpace(value)) return "—";
-            int index = value.IndexOf("SF2-", StringComparison.OrdinalIgnoreCase);
-            return index >= 0 ? value.Substring(index) : value;
-        }
-
-        private static string FormatRate(double bytes)
-        {
-            return FormatBytes((long)Math.Max(0, bytes)) + "/s";
-        }
-
-        private static string FormatBytes(long bytes)
-        {
-            double value = Math.Max(0, bytes);
-            string[] units = { "B", "KB", "MB", "GB", "TB" };
-            int unit = 0;
-            while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
-            return value.ToString(value >= 100 || unit == 0 ? "0" : "0.0") + " " + units[unit];
-        }
-    }
 
     internal static class Program
     {
@@ -743,12 +225,7 @@ namespace CodexProxyManager
 
         internal static void AppendLog(string path, string message)
         {
-            try
-            {
-                string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message + Environment.NewLine;
-                File.AppendAllText(path, line, new UTF8Encoding(false));
-            }
-            catch { }
+            PrivacyLog.AppendManager(path, message);
         }
     }
 
@@ -829,6 +306,13 @@ namespace CodexProxyManager
             host.SetProfileName(startup.ProfileName);
             host.SetNodeProfile(startup.UserDataRoot, startup.ProfileId);
             host.SetApplicationName(targetApplication.Name);
+            host.PrivacyRequested += delegate
+            {
+                if (busy) return;
+                using (var form = new PrivacyCenterForm(delegate { return targetApplication; },
+                    delegate { return sessionActive; }, startup.LogsDirectory, host,
+                    delegate { OpenConfiguration(true); })) form.ShowDialog(host);
+            };
             host.FormClosing += HostFormClosing;
             host.StartRequested += delegate { BeginStart(); };
             host.StopRequested += delegate { BeginStop(true); };
@@ -843,7 +327,6 @@ namespace CodexProxyManager
                 if (busy) return;
                 using (var form = new DiagnosticsForm(CaptureDiagnosticInput)) form.ShowDialog(host);
             };
-            host.OpenLogsRequested += delegate { Process.Start("explorer.exe", startup.LogsDirectory); };
             host.ExitRequested += delegate { ExitManager(); };
             MainForm = host;
             host.Show();
@@ -1372,6 +855,7 @@ namespace CodexProxyManager
                 CorePath = corePath, ConfigPath = configPath, CoreHome = coreHome, StatePath = statePath,
                 MixedPort = mixedPort, SessionActive = sessionActive, CoreAlive = alive,
                 ApplicationRunning = ApplicationConfiguration.IsRunning(targetApplication),
+                PrivacySummary = PrivacyProtection.Describe(targetApplication, sessionActive),
                 ProcessNames = targetApplication.Id == "codex" ? new[] { "ChatGPT.exe", "codex.exe" } : new[] { Path.GetFileName(targetApplication.Executable) },
                 CoreUrl = "http://127.0.0.1:" + controllerPort, CoreSecret = controllerSecret,
                 NodeUrl = nodeControllerUrl, NodeSecret = nodeControllerSecret,
@@ -1475,7 +959,7 @@ namespace CodexProxyManager
                     };
                     Program.WriteState(statePath, state);
                     StartWatchdog(coreProcess.Id);
-                    using (Process application = Process.Start(ProcessProxyLauncher.BuildStartInfo(executable, mixedPort, targetApplication.LaunchMode)))
+                    using (Process application = Process.Start(ProcessProxyLauncher.BuildStartInfo(executable, mixedPort, targetApplication)))
                         Program.AppendLog(managerLog, "Launched application PID " + application.Id + " with process-only proxy; Windows proxy unchanged.");
 
                     DateTime deadline = DateTime.Now.AddSeconds(12);
@@ -1572,7 +1056,7 @@ namespace CodexProxyManager
             while (DateTime.Now < deadline)
             {
                 if (coreProcess.HasExited) throw new InvalidOperationException("Mihomo 启动失败，退出代码：" + coreProcess.ExitCode);
-                if (TestPort(mixedPort, 250)) return;
+                if (TestPort(mixedPort, 250)) { ReduceCoreLogging(); return; }
                 Thread.Sleep(200);
             }
             throw new TimeoutException("代理核心未能在 35 秒内监听端口 " + mixedPort + "。");
@@ -1580,19 +1064,33 @@ namespace CodexProxyManager
 
         private void AppendCoreLog(string path, string line)
         {
-            try { File.AppendAllText(path, line + Environment.NewLine, new UTF8Encoding(false)); }
-            catch { }
+            PrivacyLog.AppendCore(path, line);
+        }
+
+        private void ReduceCoreLogging()
+        {
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + controllerPort + "/configs");
+                request.Method = "PATCH";
+                request.Proxy = null;
+                request.AllowAutoRedirect = false;
+                request.Timeout = request.ReadWriteTimeout = 2000;
+                request.ContentType = "application/json";
+                request.Headers[HttpRequestHeader.Authorization] = "Bearer " + controllerSecret;
+                byte[] body = Encoding.UTF8.GetBytes("{\"log-level\":\"warning\"}");
+                request.ContentLength = body.Length;
+                using (var stream = request.GetRequestStream()) stream.Write(body, 0, body.Length);
+                using (var response = request.GetResponse()) { }
+            }
+            catch { Program.AppendLog(managerLog, "Core log preference error."); }
         }
 
         private static void RotateLog(string path)
         {
             try
             {
-                FileInfo file = new FileInfo(path);
-                if (!file.Exists || file.Length < 5 * 1024 * 1024) return;
-                string previous = path + ".1";
-                if (File.Exists(previous)) File.Delete(previous);
-                File.Move(path, previous);
+                PrivacyLog.Rotate(path);
             }
             catch { }
         }
@@ -1734,6 +1232,7 @@ namespace CodexProxyManager
             {
                 tray.BalloonTipTitle = "Codex Proxy Manager";
                 tray.BalloonTipText = message;
+                if (host.ScreenshotPrivacy) tray.BalloonTipText = "操作状态已更新；截图模式下隐藏详细信息。";
                 tray.BalloonTipIcon = icon;
                 tray.ShowBalloonTip(3000);
             });
@@ -1743,7 +1242,8 @@ namespace CodexProxyManager
         {
             Ui(delegate
             {
-                MessageBox.Show(message, "Codex Proxy Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(host.ScreenshotPrivacy ? "操作失败。截图模式下已隐藏详情，请使用连接诊断。" : message,
+                    "Codex Proxy Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
             });
         }
 

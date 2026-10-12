@@ -7,8 +7,13 @@ replaceable backend.
 ## Current components
 
 - `DashboardForm`: connection state, traffic, latency, and node switching UI.
+- `UiButton` / `UiComboBox`: native keyboard/accessibility semantics with shared dark rendering.
+- `PrivacyCenterForm`: live configuration/request state, screenshot masking, bounded log actions, explicit local browser behavior test.
+- `PrivacyLog`: fixed event output only, size/age rotation, exact non-recursive log cleanup.
+- `BrowserPrivacyProbe`: Chrome/Edge-only temporary profiles, loopback HTTP/STUN fixtures, bounded local CDP requests; never attach to the user's current browser or claim global leak protection.
 - `ManagerContext`: local core and Codex lifecycle, with legacy Windows proxy recovery only.
 - `ProcessProxyLauncher`: installed MSIX package discovery and direct executable launch with Electron proxy flags plus child-only proxy environment variables.
+- `PrivacyProtection`: per-app optional launch restrictions for WebRTC, browser host resolution and QUIC. Requests are not enforcement guarantees; Electron may ignore WebRTC switches. No global policies or firewall rules are written.
 - `ApplicationConfiguration`: backward-compatible app registry, per-app profile bindings, executable validation and process-scoped session configuration.
 - `ApplicationManagerForm`: app onboarding, edit, removal, and selection UI.
 - `Diagnostics`: read-only state collection, process-filtered connection counts, bounded local API reads, and allowlisted report messages.

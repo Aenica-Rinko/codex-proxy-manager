@@ -20,6 +20,7 @@ namespace CodexProxyManager
         internal string[] ProcessNames;
         internal int MixedPort;
         internal bool SessionActive, CoreAlive, ApplicationRunning;
+        internal string PrivacySummary;
     }
 
     internal sealed class DiagnosticRow
@@ -83,6 +84,7 @@ namespace CodexProxyManager
                 NodeSecret = external ? profile.NodeControllerSecret : settings.ControllerSecret,
                 GroupName = profile.ProxyGroupName, SessionActive = File.Exists(statePath), CoreAlive = alive,
                 ApplicationRunning = ApplicationConfiguration.IsRunning(application),
+                PrivacySummary = PrivacyProtection.Describe(application, alive && File.Exists(statePath)),
                 ProcessNames = application.Id == "codex" ? new[] { "ChatGPT.exe", "codex.exe" } : new[] { Path.GetFileName(application.Executable) }
             };
         }
@@ -97,6 +99,7 @@ namespace CodexProxyManager
             report.Add("SESSION", "信息", input.SessionActive ? "专用代理会话运行中。" : "专用代理已停止；可以检查文件和端口。启动后可检查实际流量。");
             report.Add("APPLICATION", input.ApplicationRunning ? "通过" : "信息",
                 input.ApplicationRunning ? "检测到目标应用进程；是否使用代理请结合 FLOW 检查。" : "未检测到目标应用进程。");
+            report.Add("PRIVACY", "信息", input.PrivacySummary ?? "未检查应用隐私设置；未验证泄漏情况。");
             CheckSystemProxy(input, report);
             try
             {
