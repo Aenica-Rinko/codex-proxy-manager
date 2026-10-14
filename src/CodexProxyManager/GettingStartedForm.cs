@@ -85,6 +85,7 @@ namespace CodexProxyManager
             text.AppendLine();
             text.AppendLine("2. 选择你的代理来源");
             text.AppendLine("• 有订阅 URL 或分享链接：在档案管理器选择对应来源，无需同时运行其他客户端。");
+            text.AppendLine("• 有本机 YAML/YML/TXT 文件：选择本地文件导入，复制节点并生成专用分流，原文件不改、不自动同步。");
             text.AppendLine("• 已有代理软件：选择本地 HTTP/SOCKS5 端口，上游软件须保持运行。");
             text.AppendLine("• 想控制外部客户端节点：选择本机 Clash/Mihomo API，填写端口、控制密钥和策略组。");
             text.AppendLine();
@@ -99,7 +100,7 @@ namespace CodexProxyManager
             text.AppendLine("配置、订阅和收藏保存在 %LOCALAPPDATA%\\CodexProxyManager，不应上传到 GitHub。");
             text.AppendLine("作者：Rinko。许可证：GNU GPL 第 3 版（GPL-3.0-only），详见程序目录 LICENSE。");
             text.AppendLine("本程序不提供任何担保；允许依 GPL 再分发和修改，对应源码及构建脚本随包提供。");
-            text.AppendLine("本版是发布准备版本，尚未完成干净 Windows 环境验收。");
+            text.AppendLine("v1.0.0 按当前功能范围发布；干净 Windows/DPI/共存验收尚未全部完成，不保证全面兼容或零泄漏。");
             instructions.Text = text.ToString();
             instructions.Select(0, 0);
             instructions.ScrollToCaret();

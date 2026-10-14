@@ -66,7 +66,7 @@ v0.11.3 的核心集成直接调用会话服务，不再伪造 ManagerContext �
 
 “开始使用 / 版本”按钮或 `--guide` 可以随时打开只读引导，不启动代理，也不会重新配置当前档案。
 
-## 预发布打包（v0.10）
+## 发行打包
 
 ```powershell
 & '.\scripts\test-release-safety.ps1'
@@ -77,7 +77,7 @@ v0.11.3 的核心集成直接调用会话服务，不再伪造 ManagerContext �
 & '.\scripts\package.ps1'
 ```
 
-打包会从暂存的对应源码重新编译，并在 `artifacts/releases` 生成管理器预发布 ZIP 和 `.sha256`。用户包根目录只放固定 EXE、README、LICENSE、docs、tools、source 和 manifest.json；完整对应源码收纳在 source 内，保留可独立构建和测试的开发结构。不复制用户目录、核心、规则库、快捷方式或旧 EXE。已有同名包拒绝覆盖，使用 `-OutputDirectory` 可另选输出目录。
+打包会从暂存的对应源码重新编译，并在 `artifacts/releases` 生成 ZIP 和 `.sha256`。v1.0.0 起包名为 `CodexProxyManager-v<版本>-manager-only.zip`，manifest channel 为 `manager-only`；0.x 构建保留 `manager-only-preview` 命名。用户包根目录只放固定 EXE、README、LICENSE、docs、tools、source 和 manifest.json；完整对应源码收纳在 source 内，保留可独立构建和测试的开发结构。不复制用户目录、核心、规则库、快捷方式或旧 EXE。已有同名包拒绝覆盖，使用 `-OutputDirectory` 可另选输出目录。
 
 版本统一修改 `src/CodexProxyManager/AppInfo.cs`；程序集、窗口和 ZIP 版本更新，EXE 文件名固定为 CodexProxyManager.exe。目录迁移与可恢复归档见 [FILE_LAYOUT.md](FILE_LAYOUT.md)。文件哈希用于核对字节，不是发布者签名，名单也不能替代内容审计。
 

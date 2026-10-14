@@ -6,6 +6,8 @@ replaceable backend.
 
 ## Current components
 
+- `LocalFileImport`: bounded strict text snapshot, source path not persisted, node-only parsing through an isolated Mihomo file provider with no target/data listeners, health checks or inherited CLASH hooks; private snapshot/scoped config and rollback of exact newly created files. Full original global policy and remote providers are not imported.
+
 - `DashboardForm`: connection state, traffic, latency, and node switching UI.
 - Dashboard polling runs on one background worker at a time, with copied controller credentials and revision checks before UI updates; stopped/switched sessions discard stale results. Health-check results also require the original session/node. "Entry available" is not an end-to-end login claim.
 - `LocalControllerTransport`: shared loopback-only GET/PUT/DELETE transport; no inherited proxy or redirects, response cap, connection/read timeout and total wall-clock abort deadline.

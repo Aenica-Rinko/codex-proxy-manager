@@ -38,6 +38,6 @@ jobs:
           ./scripts/test.ps1 -UnitOnly
           ./scripts/test-package.ps1
           ./scripts/test-layout.ps1
-      - name: Build manager-only preview
+      - name: Build manager-only package
         run: ./scripts/package.ps1
       # No release publishing or artifact upload until the owner approves public distribution.

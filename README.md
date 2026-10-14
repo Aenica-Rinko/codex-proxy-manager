@@ -4,15 +4,17 @@
 
 一个由 **Rinko** 维护的 Windows 桌面代理管理器，内置 Codex 启动入口。可以导入自己的订阅或节点，也可以连接现有代理软件，集中查看连接状态、实时流量、节点延迟，并手动启动、停止和切换节点。
 
-> 当前版本：**v0.11.3 恢复与可靠性预览版**。独立 Windows 环境验收尚未完成，不是 v1.0 正式版。它不是 OpenAI 官方产品，不提供节点、订阅或账号，也不保证目标服务一定可用。
+> 当前版本：**v1.0.0**，由维护者决定发布当前功能范围。独立 Windows、多 DPI 及真实共存性能验收仍未全部完成；版本号不代表全面兼容或零泄漏认证。它不是 OpenAI 官方产品，不提供节点、订阅或账号，也不保证目标服务一定可用。
 
 本版合并此前未单独发布的 v0.11.1/v0.11.2 改动：运行中恢复、审查修复，以及会话/节点/轮询服务拆分。详见 [审查记录](docs/REVIEW.md)。
+
+本版包含此前本地 v0.11.4 的“本地文件导入”。可导入含内联 `proxies` 的 YAML、分享链接或 Base64 文本，复制节点而非照搬策略组或全局配置，详见 [使用手册](docs/USER_GUIDE.md)。
 
 **恢复代理的前提：首次必须从本管理器点击“启动 / 恢复”启动目标应用。随后让应用保持运行，点击“停止代理”后，才可再次点击“启动 / 恢复”恢复代理；代理端口和隐私参数必须保持匹配。普通方式打开的应用不能在运行途中被接管。环境变量模式或参数无法核实的应用不支持免重启恢复。停止代理不等于切换直连。**
 
 [快速入门](docs/QUICKSTART.md) · [详细手册](docs/USER_GUIDE.md) · [隐私说明](docs/PRIVACY.md) · [开发与测试](docs/DEVELOPMENT.md) · [预发布与升级说明](docs/RELEASE_NOTES.md)
 
-**下载：** [v0.11.3 预发布与附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v0.11.3)。请选择 `CodexProxyManager-v0.11.3-manager-only-preview.zip`，完整解压后运行 `CodexProxyManager.exe`；首次使用须自行准备核心、规则库和代理来源。GitHub 的 Source code ZIP 是源码，不是可运行包。旧版 v0.11.0、v0.10.3 与 v0.10.2 保留供需要时回退。
+**下载：** [v1.0.0 发布与附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v1.0.0)。请选择 `CodexProxyManager-v1.0.0-manager-only.zip`，完整解压后运行 `CodexProxyManager.exe`；首次使用须自行准备核心、规则库和代理来源。GitHub 的 Source code ZIP 是源码，不是可运行包。按维护者要求，历史 GitHub Release、附件及旧版本标签下架，源码提交历史仍保留。
 
 **已知问题：** 已收到启动应用后 Microsoft Store 加载、游戏联网变慢的反馈，原因尚未定位，当前版本未修复。对这类共存场景敏感的用户建议等待后续更新。如遇到问题，请先保存工作，停止专用代理并完全退出通过管理器启动的目标应用，再对照测试；不要为排障关闭系统安全保护。
 
@@ -53,6 +55,7 @@
 | --- | --- | --- | --- |
 | 订阅 URL | 订阅 URL | 不需要 | 本管理器 |
 | 一个或多个节点分享链接 | 分享链接 / Base64 | 不需要 | 本管理器 |
+| 本机 YAML/YML/TXT 代理文件 | 本地文件导入 | 不需要（节点若指向本机上游则仍需要） | 本管理器 |
 | 代理软件的本地 HTTP/SOCKS5 端口 | 本地 HTTP / SOCKS5 | 需要 | 通常在上游软件中 |
 | 代理软件的本机 Mihomo 控制接口 | 外部 Clash / Mihomo API | 需要 | 本管理器可控制其策略组 |
 
@@ -100,7 +103,7 @@ Clash、Mihomo Party、v2rayN、NekoBox 等软件能否接入，以它们是否�
 
 请先查阅 [快速入门中的排障说明](docs/QUICKSTART.md)。需要反馈时，可在 [GitHub Issues](https://github.com/Aenica-Rinko/codex-proxy-manager/issues) 提供管理器版本、问题步骤、预期与实际结果、已检查过的脱敏报告；不要粘贴订阅、分享链接、控制密钥或原始日志。截图请先遮住节点名、地址和个人路径。
 
-本项目以预发布形式开放测试，不要求用户提供真实凭据来复现问题。贡献前请阅读 [开发说明](docs/DEVELOPMENT.md) 和 [发布清单](docs/RELEASE_CHECKLIST.md)。sing-box 后端、多应用并发、安装程序和自动更新只是后续方向，并非已实现功能。
+本项目不要求用户提供真实凭据来复现问题。贡献前请阅读 [开发说明](docs/DEVELOPMENT.md) 和 [发布清单](docs/RELEASE_CHECKLIST.md)。sing-box 后端、多应用并发、安装程序和自动更新只是后续方向，并非已实现功能。
 
 ## 许可证
 

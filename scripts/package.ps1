@@ -7,7 +7,7 @@ $version = Get-ManagerVersion
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $root 'artifacts/releases' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $destination = (Resolve-Path -LiteralPath $OutputDirectory).Path
-$packageName = 'CodexProxyManager-v' + $version + '-manager-only-preview'
+$packageName = Get-ManagerPackageName
 $archivePath = Join-Path $destination ($packageName + '.zip')
 $hashPath = $archivePath + '.sha256'
 if ((Test-Path -LiteralPath $archivePath) -or (Test-Path -LiteralPath $hashPath)) { throw 'Package already exists; choose a new output directory or move the previous package first.' }
@@ -32,7 +32,7 @@ try {
     $exe = 'CodexProxyManager.exe'
     $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $stage $exe)).FileVersion
     if ($fileVersion -ne ($version + '.0')) { throw 'Built version does not match release version.' }
-    $manifest = [ordered]@{ version = $version; channel = 'manager-only-preview'; license = 'GPL-3.0-only';
+    $manifest = [ordered]@{ version = $version; channel = (Get-ManagerPackageChannel); license = 'GPL-3.0-only';
         author = 'Rinko'; includesRuntime = $false; includesCorrespondingSource = $true; sourceDirectory = 'source'; files = @() }
     foreach ($name in ($files + $exe | Sort-Object)) {
         $manifest.files += [ordered]@{ path = $name; sha256 = (Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash.ToLowerInvariant() }

@@ -19,7 +19,7 @@ try {
         [IO.File]::WriteAllText($path, 'PRIVATE_CANARY_NOT_FOR_RELEASE')
     }
     & (Join-Path $fixture 'scripts\package.ps1') | Out-Null
-    $archivePath = Join-Path $fixture ('artifacts\releases\CodexProxyManager-v' + (Get-ManagerVersion) + '-manager-only-preview.zip')
+    $archivePath = Join-Path $fixture ('artifacts\releases\' + (Get-ManagerPackageName) + '.zip')
     $hashLine = [IO.File]::ReadAllText($archivePath + '.sha256').Split(' ')[0]
     if ($hashLine -ne (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'ZIP hash mismatch' }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -30,7 +30,7 @@ try {
         if (@(Compare-Object ($expected | Sort-Object) ($entryNames | Sort-Object)).Count -ne 0) { throw 'Unexpected archive contents' }
         $reader = New-Object IO.StreamReader($archive.GetEntry('manifest.json').Open())
         try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
-        if ($manifest.version -ne (Get-ManagerVersion) -or $manifest.includesRuntime -ne $false -or $manifest.files.Count -ne ($expected.Count - 1)) { throw 'Invalid release metadata' }
+        if ($manifest.version -ne (Get-ManagerVersion) -or $manifest.channel -ne (Get-ManagerPackageChannel) -or $manifest.includesRuntime -ne $false -or $manifest.files.Count -ne ($expected.Count - 1)) { throw 'Invalid release metadata' }
         if ($manifest.license -ne 'GPL-3.0-only' -or $manifest.author -ne 'Rinko' -or
             $manifest.includesCorrespondingSource -ne $true -or $manifest.sourceDirectory -ne 'source') { throw 'Invalid license/source metadata' }
         $topLevel = @($entryNames | ForEach-Object { $_.Split('/')[0] } | Sort-Object -Unique)

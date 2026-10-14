@@ -109,12 +109,14 @@ namespace CodexProxyManager
                 RunningApplicationTests.Run(scratch);
                 ReviewTests.Run(scratch);
                 ServiceTests.Run(scratch);
+                LocalFileImportTests.Run(scratch);
                 if (Array.IndexOf(args, "--unit-only") >= 0)
                 {
                     Assert(before == RegistrySnapshot(), "Unit tests changed Windows proxy settings");
                     Console.WriteLine("ALL UNIT TESTS PASSED (network integration tests not run)");
                     return 0;
                 }
+                LocalFileImportTests.RunCore(scratch, root);
                 string executable = ProcessProxyLauncher.FindCodexExecutable();
                 Assert(File.Exists(executable), "Registered Codex executable discovery failed");
                 Console.WriteLine("PASS registered Codex executable discovered");

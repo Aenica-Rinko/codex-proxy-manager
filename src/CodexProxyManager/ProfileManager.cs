@@ -29,6 +29,7 @@ namespace CodexProxyManager
             if (String.Equals(kind, "local-upstream", StringComparison.OrdinalIgnoreCase)) return "本地代理";
             if (String.Equals(kind, "external-mihomo", StringComparison.OrdinalIgnoreCase)) return "外部 Clash/Mihomo";
             if (String.Equals(kind, "managed-config", StringComparison.OrdinalIgnoreCase)) return "自定义配置";
+            if (String.Equals(kind, "local-file", StringComparison.OrdinalIgnoreCase)) return "本地文件";
             return kind ?? "未知";
         }
     }
@@ -54,6 +55,8 @@ namespace CodexProxyManager
         private readonly TextBox subscriptionUrlBox;
         private readonly Panel linksPanel;
         private readonly TextBox linksBox;
+        private readonly Panel filePanel;
+        private readonly TextBox filePathBox;
         private readonly Panel externalPanel;
         private readonly TextBox externalHostBox;
         private readonly NumericUpDown externalPortBox;
@@ -64,6 +67,7 @@ namespace CodexProxyManager
         private bool changed;
         private bool controllerTestRunning;
         private bool localTestRunning;
+        private bool importRunning;
 
         private ProfileManagerForm(string projectRoot, string userRoot, bool firstRun)
         {
@@ -141,12 +145,12 @@ namespace CodexProxyManager
             {
                 Left = 116,
                 Top = 91,
-                Width = 220,
+                Width = 420,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(13, 17, 23),
                 ForeColor = ForeColor
             };
-            sourceTypeBox.Items.AddRange(new object[] { "订阅 URL", "分享链接 / Base64", "本地 HTTP / SOCKS5", "外部 Clash / Mihomo API" });
+            sourceTypeBox.Items.AddRange(new object[] { "订阅 URL", "分享链接 / Base64", "本地 HTTP / SOCKS5", "外部 Clash / Mihomo API", "本地文件导入" });
             sourceTypeBox.SelectedIndex = 0;
             sourceTypeBox.SelectedIndexChanged += delegate { UpdateSourcePanels(); };
             right.Controls.Add(sourceTypeBox);
@@ -232,6 +236,25 @@ namespace CodexProxyManager
                 8.5F, Color.FromArgb(210, 153, 34), false);
             Button testExternalButton = MakeChildButton(externalPanel, "测试控制接口", 92, 194, 150, Color.FromArgb(31, 111, 235));
             testExternalButton.Click += TestExternalController;
+
+            filePanel = MakeChildPanel(right, 18, 133, 518, 242);
+            AddChildLabel(filePanel, "选择本机代理文件", 0, 0, 510, 25, 9.5F, ForeColor, false);
+            filePathBox = AddChildTextBox(filePanel, "", 0, 31, 390, false, false);
+            filePathBox.ReadOnly = true;
+            Button browseFileButton = MakeChildButton(filePanel, "选择文件", 402, 29, 116, Color.FromArgb(31, 111, 235));
+            browseFileButton.Click += delegate
+            {
+                using (var dialog = new OpenFileDialog { Title = "导入本地代理文件", CheckFileExists = true,
+                    Multiselect = false, Filter = "代理文本 (*.yaml;*.yml;*.txt)|*.yaml;*.yml;*.txt" })
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                    {
+                        filePathBox.Text = dialog.FileName;
+                        if (String.IsNullOrWhiteSpace(profileNameBox.Text)) profileNameBox.Text = Path.GetFileNameWithoutExtension(dialog.FileName);
+                    }
+            };
+            AddChildLabel(filePanel, "支持含内联 proxies 的 Clash/Mihomo YAML、逐行分享链接或 Base64 文本，最大 10 MiB。", 0, 80, 510, 50, 9F, Color.FromArgb(139, 148, 158), false);
+            AddChildLabel(filePanel, "仅复制节点，生成专用分流；不采用源文件的 TUN、DNS、端口和全局规则。原文件不修改，后续修改不会自动同步。", 0, 135, 510, 54, 9F, Color.FromArgb(210, 153, 34), false);
+            AddChildLabel(filePanel, "仅导入可信文件；不支持仅有远程 provider 引用的档案或 v2rayN/Xray JSON。校验不启动目标应用、不测速。", 0, 194, 510, 46, 8.8F, Color.FromArgb(139, 148, 158), false);
 
             Button addButton = MakeChildButton(right, "添加并设为当前", 18, 391, 170, Color.FromArgb(35, 134, 54));
             addButton.Click += AddProfile;
@@ -352,8 +375,10 @@ namespace CodexProxyManager
             RefreshProfileList();
         }
 
-        private void AddProfile(object sender, EventArgs e)
+        private async void AddProfile(object sender, EventArgs e)
         {
+            if (importRunning) return;
+            ImportedLocalProfile imported = null;
             try
             {
                 string name = profileNameBox.Text.Trim();
@@ -400,7 +425,7 @@ namespace CodexProxyManager
                     yaml = MihomoConfigFactory.BuildLocalUpstream(localTypeBox.SelectedIndex == 1 ? "http" : "socks5",
                         host, port, localUserBox.Text, localPasswordBox.Text, settings.MixedPort);
                 }
-                else
+                else if (sourceTypeBox.SelectedIndex == 3)
                 {
                     string host = externalHostBox.Text.Trim();
                     int port = Convert.ToInt32(externalPortBox.Value);
@@ -410,9 +435,32 @@ namespace CodexProxyManager
                     kind = "external-mihomo";
                     yaml = MihomoConfigFactory.BuildLocalUpstream("http", host, port, "", "", settings.MixedPort);
                 }
+                else if (sourceTypeBox.SelectedIndex == 4)
+                {
+                    string source = filePathBox.Text;
+                    if (String.IsNullOrWhiteSpace(source)) throw new InvalidOperationException("请先选择本地代理文件。");
+                    int mixedPort = settings.MixedPort;
+                    importRunning = true;
+                    Enabled = false;
+                    SetStatus("正在离线读取并校验节点，请稍候…", true);
+                    imported = await Task.Run(delegate
+                    {
+                        return LocalFileImport.Prepare(userRoot, source, mixedPort, delegate(string snapshot)
+                        { return LocalFileImport.ValidateWithCore(projectRoot, userRoot, snapshot); });
+                    });
+                    id = imported.Id;
+                    relativeConfig = imported.RelativeConfig;
+                    configPath = imported.ConfigPath;
+                    kind = "local-file";
+                    yaml = null;
+                }
+                else throw new InvalidOperationException("请选择节点来源。");
 
-                Directory.CreateDirectory(profileDirectory);
-                File.WriteAllText(configPath, yaml, new UTF8Encoding(false));
+                if (imported == null)
+                {
+                    Directory.CreateDirectory(profileDirectory);
+                    File.WriteAllText(configPath, yaml, new UTF8Encoding(false));
+                }
                 ProxyProfileDefinition profile = new ProxyProfileDefinition
                 {
                     Id = id,
@@ -430,14 +478,21 @@ namespace CodexProxyManager
                     settings.ActiveProfileId = id;
                     FollowActiveProfile();
                 })) return;
+                if (imported != null) imported.Committed = true;
                 changed = true;
                 ClearEditor();
-                SetStatus("档案已保存并设为当前。", true);
+                SetStatus(imported == null ? "档案已保存并设为当前。" : "已导入 " + imported.NodeCount + " 个节点并设为当前；原文件未修改。", true);
                 RefreshProfileList();
             }
             catch (Exception ex)
             {
                 SetStatus(ex.Message, false);
+            }
+            finally
+            {
+                if (imported != null) imported.Dispose();
+                importRunning = false;
+                if (!IsDisposed) Enabled = true;
             }
         }
 
@@ -470,6 +525,7 @@ namespace CodexProxyManager
 
         private void ProfileManagerClosing(object sender, FormClosingEventArgs e)
         {
+            if (importRunning) { e.Cancel = true; return; }
             if (DialogResult != DialogResult.None) return;
             if (settings.Profiles != null && settings.Profiles.Count > 0)
             {
@@ -488,10 +544,12 @@ namespace CodexProxyManager
             linksPanel.Visible = sourceTypeBox.SelectedIndex == 1;
             localPanel.Visible = sourceTypeBox.SelectedIndex == 2;
             externalPanel.Visible = sourceTypeBox.SelectedIndex == 3;
+            filePanel.Visible = sourceTypeBox.SelectedIndex == 4;
             if (subscriptionPanel.Visible) subscriptionPanel.BringToFront();
             if (linksPanel.Visible) linksPanel.BringToFront();
             if (localPanel.Visible) localPanel.BringToFront();
             if (externalPanel.Visible) externalPanel.BringToFront();
+            if (filePanel.Visible) filePanel.BringToFront();
         }
 
         private async void TestLocalPort(object sender, EventArgs e)
@@ -576,6 +634,7 @@ namespace CodexProxyManager
             profileNameBox.Clear();
             subscriptionUrlBox.Clear();
             linksBox.Clear();
+            filePathBox.Clear();
             localUserBox.Clear();
             localPasswordBox.Clear();
             externalSecretBox.Clear();
