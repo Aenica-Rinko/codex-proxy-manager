@@ -21,7 +21,16 @@ try {
 finally {
     $resolved = [IO.Path]::GetFullPath($testDir)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-    if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
-        Remove-Item -LiteralPath $resolved -Recurse -Force
+    if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        [IO.Path]::GetFileName($resolved).StartsWith('CodexProxyTestBuild-')) {
+        # A fixture watchdog can briefly hold this EXE after the test parent exits.
+        # Retry only our exact temporary build; never kill unrelated processes or hide failure.
+        for ($cleanupAttempt = 0; $cleanupAttempt -lt 12; $cleanupAttempt++) {
+            try { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop; break }
+            catch {
+                if ($cleanupAttempt -eq 11) { throw }
+                Start-Sleep -Milliseconds 250
+            }
+        }
     }
 }

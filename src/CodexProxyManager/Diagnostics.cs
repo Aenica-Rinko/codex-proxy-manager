@@ -245,32 +245,10 @@ namespace CodexProxyManager
 
         internal static Dictionary<string, object> ReadApi(string url, string secret, string path, int timeout)
         {
-            string endpoint = StartupConfiguration.NormalizeControllerUrl(url);
-            if (String.IsNullOrEmpty(endpoint)) throw new InvalidDataException();
-            var request = (HttpWebRequest)WebRequest.Create(endpoint + path);
-            request.Proxy = null;
-            request.AllowAutoRedirect = false;
-            request.Timeout = timeout;
-            request.ReadWriteTimeout = timeout;
-            if (!String.IsNullOrEmpty(secret)) request.Headers[HttpRequestHeader.Authorization] = "Bearer " + secret;
-            using (var response = (HttpWebResponse)request.GetResponse())
-            {
-                if (response.StatusCode != HttpStatusCode.OK) throw new InvalidDataException();
-                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                {
-                    var buffer = new char[4096];
-                    var text = new StringBuilder();
-                    int read;
-                    while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        text.Append(buffer, 0, read);
-                        if (text.Length > 2 * 1024 * 1024) throw new InvalidDataException();
-                    }
-                    var root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text.ToString());
-                    if (root == null) throw new InvalidDataException();
-                    return root;
-                }
-            }
+            string text = LocalControllerTransport.Send(url, secret, path, "GET", null, timeout);
+            var root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text);
+            if (root == null) throw new InvalidDataException();
+            return root;
         }
 
         internal static string Explain(Exception error)

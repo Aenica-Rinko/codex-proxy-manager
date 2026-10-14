@@ -31,7 +31,16 @@ namespace CodexProxyManager
         internal static void Normalize(ManagerSettings settings)
         {
             if (settings == null) throw new InvalidDataException("设置文件无效。");
+            var profileIds = new HashSet<string>(StringComparer.Ordinal);
+            if (settings.Profiles != null)
+                foreach (ProxyProfileDefinition profile in settings.Profiles)
+                    if (profile == null || String.IsNullOrWhiteSpace(profile.Id) || !profileIds.Add(profile.Id))
+                        throw new InvalidDataException("代理档案标识为空或重复；请修复设置，原文件未修改。");
             if (settings.Applications == null) settings.Applications = new List<ManagedApplication>();
+            var applicationIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ManagedApplication app in settings.Applications)
+                if (app != null && (String.IsNullOrWhiteSpace(app.Id) || !applicationIds.Add(app.Id)))
+                    throw new InvalidDataException("应用标识为空或重复；请修复设置，原文件未修改。");
             if (!settings.Applications.Exists(delegate(ManagedApplication app) { return app != null && app.Id == "codex"; }))
                 settings.Applications.Insert(0, DefaultApplication());
             settings.Applications.RemoveAll(delegate(ManagedApplication app) { return app == null; });
@@ -100,9 +109,10 @@ namespace CodexProxyManager
         {
             if (app == null || app.Id == "codex")
                 return HasProcess("ChatGPT") || HasProcess("codex");
-            foreach (Process process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(app.Executable)))
+            Process[] processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(app.Executable));
+            try
             {
-                using (process)
+                foreach (Process process in processes)
                 {
                     try
                     {
@@ -112,6 +122,7 @@ namespace CodexProxyManager
                     catch { return true; }
                 }
             }
+            finally { foreach (Process process in processes) process.Dispose(); }
             return false;
         }
 

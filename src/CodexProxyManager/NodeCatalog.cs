@@ -37,6 +37,7 @@ namespace CodexProxyManager
 
         private Dictionary<string, List<string>> Read()
         {
+            if (!PrivacyLog.SafePath(path)) throw new InvalidDataException();
             if (!File.Exists(path)) return new Dictionary<string, List<string>>(StringComparer.Ordinal);
             if (new FileInfo(path).Length > 2 * 1024 * 1024) throw new InvalidDataException();
             var data = new JavaScriptSerializer().Deserialize<Dictionary<string, List<string>>>(File.ReadAllText(path));

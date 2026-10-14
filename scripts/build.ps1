@@ -8,21 +8,31 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 . (Join-Path $PSScriptRoot 'build-common.ps1')
 if (-not $OutputName) { $OutputName = 'CodexProxyManager.exe' }
-if ([IO.Path]::GetFileName($OutputName) -ne $OutputName -or $OutputName -notmatch '\.exe$') { throw 'OutputName must be an EXE filename, not a path.' }
+if ([IO.Path]::GetFileName($OutputName) -ne $OutputName -or $OutputName -notmatch '^[\p{L}\p{N}_. -]+\.exe$') { throw 'OutputName must be a safe EXE filename, not a path or alternate stream.' }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $projectRoot 'app' }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $OutputDirectory = (Resolve-Path -LiteralPath $OutputDirectory).Path
 if ($OutputDirectory.TrimEnd('\') -eq $projectRoot.TrimEnd('\')) {
     throw 'Build into app or another output directory, not the source root; source documentation must not be overwritten.'
 }
-foreach ($directory in @('src','tests','scripts','docs','examples','resources','tools')) {
+foreach ($directory in @('.git','.github','src','tests','scripts','docs','examples','resources','tools')) {
     $protected = Join-Path $projectRoot $directory
     if ($OutputDirectory -eq $protected -or $OutputDirectory.StartsWith($protected + '\', [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Build output must be separate from source directories.'
     }
 }
+$outputAncestor = $OutputDirectory
+while ($outputAncestor) {
+    if ((Get-Item -LiteralPath $outputAncestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw 'Build output must not pass through linked directories.'
+    }
+    $outputAncestor = Split-Path -Parent $outputAncestor
+}
 $sources = $ManagerSourceFiles | ForEach-Object { Join-Path $projectRoot $_ }
 $output = Join-Path (Resolve-Path -LiteralPath $OutputDirectory).Path $OutputName
+if ((Test-Path -LiteralPath $output) -and ((Get-Item -LiteralPath $output -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Build output must not replace a linked executable.'
+}
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
 if (-not (Test-Path -LiteralPath $compiler)) {

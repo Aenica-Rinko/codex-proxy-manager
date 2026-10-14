@@ -69,6 +69,14 @@ try {
     $rootRejected = $false
     try { & (Join-Path $sourceRoot 'scripts/build.ps1') -OutputDirectory $sourceRoot | Out-Null } catch { $rootRejected=$true }
     if (-not $rootRejected -or $readmeHash -ne (Get-FileHash -LiteralPath (Join-Path $sourceRoot 'README.md')).Hash) { throw 'Build overwrote source documentation' }
+    foreach ($protected in @('.git','.github')) {
+        $blocked = $false
+        try { & (Join-Path $sourceRoot 'scripts/build.ps1') -OutputDirectory (Join-Path $sourceRoot $protected) | Out-Null } catch { $blocked=$true }
+        if (-not $blocked -or (Test-Path -LiteralPath (Join-Path $sourceRoot ($protected + '/CodexProxyManager.exe')))) { throw 'Build wrote into Git metadata/workflows' }
+    }
+    $blocked = $false
+    try { & (Join-Path $sourceRoot 'scripts/build.ps1') -OutputDirectory $rebuilt -OutputName 'unsafe.exe:stream.exe' | Out-Null } catch { $blocked=$true }
+    if (-not $blocked) { throw 'Alternate stream output name accepted' }
     $before = (Get-FileHash -LiteralPath $archivePath).Hash
     $rejected = $false
     try { & (Join-Path $fixture 'scripts\package.ps1') | Out-Null } catch { $rejected = $true }

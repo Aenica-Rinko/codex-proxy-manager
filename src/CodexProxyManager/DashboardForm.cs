@@ -139,7 +139,7 @@ namespace CodexProxyManager
                 ForeColor = Color.FromArgb(139, 148, 158) };
             title.Controls.Add(applicationValue);
             header.Controls.Add(title, 0, 0);
-            startButton = MakeButton("启动应用", Color.FromArgb(31, 111, 235));
+            startButton = MakeButton("启动 / 恢复", Color.FromArgb(31, 111, 235));
             stopButton = MakeButton("停止代理", Color.FromArgb(48, 54, 61));
             startButton.Dock = stopButton.Dock = DockStyle.Top;
             startButton.Height = stopButton.Height = 40;
@@ -413,7 +413,7 @@ namespace CodexProxyManager
             applicationName = name;
             Text = screenshotPrivacy ? AppInfo.Title : AppInfo.Title + " · " + name;
             applicationValue.Text = "当前应用：" + (screenshotPrivacy ? "应用已隐藏" : name);
-            startButton.Text = "启动应用";
+            startButton.Text = "启动 / 恢复";
         }
 
         internal void UpdateNodes(IList<NodeInfo> nodes, string current)
@@ -545,8 +545,7 @@ namespace CodexProxyManager
         private static string CleanNodeName(string value)
         {
             if (String.IsNullOrWhiteSpace(value)) return "—";
-            int index = value.IndexOf("SF2-", StringComparison.OrdinalIgnoreCase);
-            return index >= 0 ? value.Substring(index) : value;
+            return value;
         }
 
         private static string FormatRate(double bytes)

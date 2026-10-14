@@ -23,7 +23,7 @@ namespace CodexProxyManager
             public Uri GetProxy(Uri destination) { throw new Exception("Inherited system proxy used"); }
             public bool IsBypassed(Uri host) { throw new Exception("Inherited system proxy used"); }
         }
-        private sealed class Server : IDisposable
+        internal sealed class Server : IDisposable
         {
             private readonly TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
             private readonly Task worker;
@@ -48,6 +48,7 @@ namespace CodexProxyManager
                                 {
                                     var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true);
                                     string request = reader.ReadLine() ?? "";
+                                    if (request.Length == 0) continue; // Bare port-readiness probe.
                                     string header;
                                     while (!String.IsNullOrEmpty(header = reader.ReadLine()))
                                         if (header == "Authorization: Bearer fixture-secret") AuthSeen = true;

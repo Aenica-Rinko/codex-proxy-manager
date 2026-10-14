@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -134,6 +135,8 @@ namespace CodexProxyManager
 
         internal static ManagerSettings ReadSettings(string path)
         {
+            if (!PrivacyLog.SafePath(path) || new FileInfo(path).Length > 2 * 1024 * 1024)
+                throw new InvalidDataException("设置文件不可安全读取或过大；原文件未修改。");
             string json = File.ReadAllText(path, Encoding.UTF8);
             // Legacy AutoStart is intentionally no longer represented or applied.
             // The serializer ignores it on read and omits it on the next save.
@@ -146,6 +149,8 @@ namespace CodexProxyManager
         {
             ApplicationConfiguration.Normalize(settings);
             string json = new JavaScriptSerializer().Serialize(settings);
+            if (!PrivacyLog.SafePath(path) || Encoding.UTF8.GetByteCount(json) > 2 * 1024 * 1024)
+                throw new InvalidDataException("设置文件路径不安全或内容过大；原文件未修改。");
             string temporary = path + ".tmp-" + Guid.NewGuid().ToString("N");
             try
             {
@@ -158,11 +163,11 @@ namespace CodexProxyManager
 
         internal static string ResolveUserPath(string userRoot, string relativePath)
         {
-            if (String.IsNullOrWhiteSpace(relativePath))
+            if (String.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath) || relativePath.IndexOf(':') >= 0)
                 throw new InvalidDataException("代理档案缺少配置文件路径。");
             string root = Path.GetFullPath(userRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
             string full = Path.GetFullPath(Path.Combine(userRoot, relativePath));
-            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !PrivacyLog.SafePath(full))
                 throw new InvalidDataException("代理档案的配置路径超出了用户数据目录。");
             return full;
         }
@@ -174,11 +179,17 @@ namespace CodexProxyManager
             if (!Uri.TryCreate(value.Trim().TrimEnd('/'), UriKind.Absolute, out uri) ||
                 !(uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
                 throw new InvalidDataException("外部控制接口必须是有效的 HTTP 或 HTTPS 地址。");
-            if (!(String.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
-                String.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
-                String.Equals(uri.Host, "::1", StringComparison.OrdinalIgnoreCase)))
+            string host = uri.Host.Trim('[', ']');
+            IPAddress address;
+            bool ipv6Loopback = IPAddress.TryParse(host, out address) && address.Equals(IPAddress.IPv6Loopback);
+            if (!(String.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+                String.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                ipv6Loopback))
                 throw new InvalidDataException("为避免控制密钥泄露，外部控制接口目前只允许使用本机地址。");
-            return uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            if (uri.UserInfo.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0 ||
+                uri.AbsolutePath != "/" || uri.Port < 1)
+                throw new InvalidDataException("控制接口请填写本机协议、地址和端口，不包含用户名、路径、查询或片段；密钥在独立输入框填写。");
+            return ipv6Loopback ? uri.Scheme + "://[::1]:" + uri.Port : uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
         }
 
         private static void EnsureDirectories(string userRoot)

@@ -29,6 +29,7 @@ namespace CodexProxyManager
             if (value.StartsWith("Launched application", StringComparison.Ordinal)) return "Target application launched with process-only proxy.";
             foreach (string safe in new[] { "Manager started.", "Manager exited.", "Session ended.",
                 "Found stale manager state.", "Started recovery watchdog.",
+                "Resumed proxy for an existing compatible application.",
                 "Watchdog detected an unexpected manager exit.", "Watchdog cleanup finished.",
                 "Proxy was changed externally; skipped registry restore.", "Restored the previous Windows proxy state." })
                 if (value == safe) return safe;

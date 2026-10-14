@@ -5,7 +5,6 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -42,19 +41,28 @@ namespace CodexProxyManager
             return port;
         }
 
-        private static void Set(object instance, string name, object value)
-        {
-            instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(instance, value);
-        }
-
-        private static void Invoke(object instance, string name)
-        {
-            instance.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic).Invoke(instance, null);
-        }
-
         [STAThread]
         private static int Main(string[] args)
         {
+            if (Array.IndexOf(args, "--hold-proxy-fixture") >= 0)
+            {
+                Console.WriteLine("READY");
+                string action;
+                while ((action = Console.ReadLine()) == "probe")
+                {
+                    try
+                    {
+                        var request = (HttpWebRequest)WebRequest.Create("http://203.0.113.1/resume-fixture");
+                        request.Proxy = new WebProxy(Environment.GetEnvironmentVariable("HTTP_PROXY"));
+                        request.Timeout = request.ReadWriteTimeout = 3000;
+                        using (var response = request.GetResponse())
+                        using (var reader = new StreamReader(response.GetResponseStream()))
+                            Console.WriteLine(reader.ReadToEnd() == "proxy-ok" ? "OK" : "FAIL");
+                    }
+                    catch { Console.WriteLine("FAIL"); }
+                }
+                return 0;
+            }
             if (args.Length == 0 || args[0].StartsWith("--proxy-server="))
             {
                 // Child process verifies the actual OS environment/argument inheritance.
@@ -90,7 +98,7 @@ namespace CodexProxyManager
             string before = RegistrySnapshot();
             string scratch = Path.Combine(Path.GetTempPath(), "CodexProxyRegression-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(scratch);
-            object context = null;
+            ProxySessionService session = null;
             try
             {
                 NodeCatalogTests.Run(scratch);
@@ -98,6 +106,9 @@ namespace CodexProxyManager
                 ControllerProbeTests.Run(scratch);
                 PrivacyTests.Run(scratch);
                 PrivacyUiTests.Run(scratch);
+                RunningApplicationTests.Run(scratch);
+                ReviewTests.Run(scratch);
+                ServiceTests.Run(scratch);
                 if (Array.IndexOf(args, "--unit-only") >= 0)
                 {
                     Assert(before == RegistrySnapshot(), "Unit tests changed Windows proxy settings");
@@ -167,20 +178,15 @@ namespace CodexProxyManager
                 string statePath = Path.Combine(scratch, "state.json");
                 string log = Path.Combine(scratch, "manager.log");
                 // Run the real core start/stop code without a dashboard or launching the active Codex session.
-                context = FormatterServices.GetUninitializedObject(typeof(ManagerContext));
-                Set(context, "corePath", Path.Combine(root, "runtime", "mihomo.exe"));
-                Set(context, "coreHome", scratch);
-                Set(context, "configPath", config);
-                Set(context, "statePath", statePath);
-                Set(context, "managerLog", log);
-                Set(context, "coreOutLog", Path.Combine(scratch, "out.log"));
-                Set(context, "coreErrLog", Path.Combine(scratch, "err.log"));
-                Set(context, "mixedPort", mixed);
-                Set(context, "controllerPort", controller);
-                Set(context, "controllerSecret", "isolated-regression-secret");
-                Invoke(context, "StartCore");
-                Process core = (Process)typeof(ManagerContext).GetField("coreProcess", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(context);
-                Program.WriteState(statePath, new ProxyState { NetworkMode = "process", CorePid = core.Id });
+                session = new ProxySessionService(new StartupProfile
+                {
+                    ProjectRoot = root, CoreHome = scratch, ConfigPath = config, StatePath = statePath,
+                    ManagerLog = log, CoreOutLog = Path.Combine(scratch, "out.log"),
+                    CoreErrLog = Path.Combine(scratch, "err.log"), MixedPort = mixed,
+                    ControllerPort = controller, ControllerSecret = "isolated-regression-secret"
+                });
+                session.PrepareCore(ApplicationConfiguration.DefaultApplication());
+                Process core = Process.GetProcessById(session.CorePid);
                 using (var client = new WebClient())
                 {
                     client.Proxy = null;
@@ -197,7 +203,7 @@ namespace CodexProxyManager
                     ProcessNames = new[] { "RegressionTests.exe" }
                 });
                 Assert(before == RegistrySnapshot(), "Diagnostics changed Windows proxy settings");
-                Invoke(context, "EndSessionCore");
+                session.Stop();
                 Assert(!File.Exists(statePath), "Session state was not removed");
                 Assert(before == RegistrySnapshot(), "Normal stop changed Windows proxy settings");
                 Console.WriteLine("PASS real Mihomo startup/API/normal stop; Windows Internet Settings byte-equivalent");
@@ -215,9 +221,7 @@ namespace CodexProxyManager
                     Assert(ApplicationConfiguration.BuildSessionConfig(template, ApplicationConfiguration.DefaultApplication()) == template, "Codex routing changed");
                     File.WriteAllText(config, template, new UTF8Encoding(false));
                     string sessionPath = Path.Combine(scratch, "session-config.yaml");
-                    File.WriteAllText(sessionPath, sessionYaml, new UTF8Encoding(false));
-                    Set(context, "sessionConfigPath", sessionPath);
-                    Invoke(context, "StartCore");
+                    session.PrepareCore(testApp);
                     var reply = Task.Run(delegate
                     {
                         using (TcpClient socket = upstream.AcceptTcpClient())
@@ -245,12 +249,91 @@ namespace CodexProxyManager
                     using (var reader = new StreamReader(response.GetResponseStream()))
                         Assert(reader.ReadToEnd() == "proxy-ok", "Custom application request did not reach upstream proxy");
                     Assert(reply.Wait(5000), "Test upstream did not complete");
-                    Invoke(context, "EndSessionCore");
+                    session.Stop();
                     Assert(File.ReadAllText(config) == template && !File.Exists(sessionPath), "Session routing modified original profile or left session copy");
                     Assert(before == RegistrySnapshot(), "Custom application routing changed Windows proxy settings");
                     Console.WriteLine("PASS custom application traffic reaches test upstream; original profile and Windows proxy preserved");
+
+                    string fixture = Path.Combine(scratch, "RunningFixture.exe");
+                    var liveApp = new ManagedApplication { Id = "live-fixture", Name = "Live fixture", Executable = fixture, LaunchMode = "chromium" };
+                    ProcessStartInfo liveInfo = ProcessProxyLauncher.BuildStartInfo(fixture, mixed, liveApp);
+                    liveInfo.Arguments += " --hold-proxy-fixture";
+                    liveInfo.CreateNoWindow = true;
+                    liveInfo.RedirectStandardInput = liveInfo.RedirectStandardOutput = true;
+                    using (Process live = Process.Start(liveInfo))
+                    {
+                        try
+                        {
+                            var ready = live.StandardOutput.ReadLineAsync();
+                            Assert(ready.Wait(5000) && ready.Result == "READY", "Live resume fixture not ready");
+                            int livePid = live.Id;
+                            for (int cycle = 0; cycle < 2; cycle++)
+                            {
+                                Assert(session.Start(liveApp), "Existing fixture was not resumed");
+                                var responseTask = Task.Run(delegate
+                                {
+                                    using (TcpClient socket = upstream.AcceptTcpClient())
+                                    using (var stream = socket.GetStream())
+                                    {
+                                        stream.ReadTimeout = 5000;
+                                        var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true);
+                                        string first = reader.ReadLine();
+                                        string header;
+                                        do { header = reader.ReadLine(); } while (!String.IsNullOrEmpty(header));
+                                        if (first != null && first.StartsWith("CONNECT "))
+                                        {
+                                            byte[] tunnel = Encoding.ASCII.GetBytes("HTTP/1.1 200 Connection Established\r\n\r\n");
+                                            stream.Write(tunnel, 0, tunnel.Length);
+                                            do { header = reader.ReadLine(); } while (!String.IsNullOrEmpty(header));
+                                        }
+                                        byte[] response = Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nproxy-ok");
+                                        stream.Write(response, 0, response.Length);
+                                    }
+                                });
+                                live.StandardInput.WriteLine("probe");
+                                var probe = live.StandardOutput.ReadLineAsync();
+                                Assert(probe.Wait(8000) && probe.Result == "OK", "Live fixture traffic did not recover");
+                                Assert(responseTask.Wait(5000), "Resume upstream reply failed");
+                                session.Stop();
+                                Assert(!live.HasExited && live.Id == livePid, "Resume or stop terminated/replaced the target");
+                                live.StandardInput.WriteLine("probe");
+                                var stopped = live.StandardOutput.ReadLineAsync();
+                                Assert(stopped.Wait(5000) && stopped.Result == "FAIL", "Stopped fixture unexpectedly bypassed proxy");
+                                Assert(before == RegistrySnapshot(), "Resume cycle changed system proxy");
+                                Assert(File.ReadAllText(config) == template && !File.Exists(sessionPath), "Resume cycle changed profile");
+                            }
+                            Assert(PrivacyLog.ManagerEvent("Resumed proxy for an existing compatible application.") ==
+                                "Resumed proxy for an existing compatible application.", "Resume event not allowlisted");
+                        }
+                        finally
+                        {
+                            live.StandardInput.WriteLine("exit");
+                            if (!live.WaitForExit(5000)) { live.Kill(); live.WaitForExit(5000); }
+                        }
+                    }
+                    Console.WriteLine("PASS two live proxy resume/stop cycles: traffic restored, PID unchanged, no system proxy or profile changes");
                 }
                 finally { upstream.Stop(); }
+
+                // Crash cleanup may stop only the exact recorded process instance.
+                core.Dispose();
+                session.PrepareCore(ApplicationConfiguration.DefaultApplication());
+                core = Process.GetProcessById(session.CorePid);
+                var cleanupState = new ProxyState { NetworkMode = "process", CorePid = core.Id,
+                    CoreExecutablePath = Path.Combine(root, "runtime", "mihomo.exe"), CoreStartUtcTicks = core.StartTime.ToUniversalTime().Ticks + 1 };
+                Program.WriteState(statePath, cleanupState);
+                RecoveryWatchdog.Run(new[] { "--watchdog", Int32.MaxValue.ToString(), core.Id.ToString(), statePath, log, "", cleanupState.SessionId });
+                Assert(!core.HasExited, "Watchdog killed a process with a different creation time");
+                cleanupState.CoreStartUtcTicks = core.StartTime.ToUniversalTime().Ticks;
+                cleanupState.SessionId = null;
+                Program.WriteState(statePath, cleanupState);
+                RecoveryWatchdog.Run(new[] { "--watchdog", Int32.MaxValue.ToString(), core.Id.ToString(), statePath, log, "", "older-session" });
+                Assert(!core.HasExited && File.Exists(statePath), "Old session watchdog altered newer core/state");
+                RecoveryWatchdog.Run(new[] { "--watchdog", Int32.MaxValue.ToString(), core.Id.ToString(), statePath, log, "", cleanupState.SessionId });
+                Assert(core.WaitForExit(5000) && !File.Exists(statePath), "Matching watchdog failed to clean up owned core");
+                session.Stop();
+                Assert(before == RegistrySnapshot(), "Identity cleanup changed system proxy");
+                Console.WriteLine("PASS watchdog identity: wrong start/session preserved; exact owned core cleaned up");
 
                 Program.WriteState(statePath, new ProxyState { NetworkMode = "process", CorePid = Int32.MaxValue });
                 RecoveryWatchdog.Run(new[] { "--watchdog", Int32.MaxValue.ToString(), Int32.MaxValue.ToString(), statePath, log });
@@ -269,7 +352,7 @@ namespace CodexProxyManager
             catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
             finally
             {
-                if (context != null) { try { Invoke(context, "StopCore"); } catch { } }
+                if (session != null) { try { session.Dispose(); } catch { } }
                 // Only the unique temporary directory created by this test is removed.
                 try { Directory.Delete(scratch, true); } catch { }
             }

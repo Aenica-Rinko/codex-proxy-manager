@@ -7,12 +7,20 @@ replaceable backend.
 ## Current components
 
 - `DashboardForm`: connection state, traffic, latency, and node switching UI.
+- Dashboard polling runs on one background worker at a time, with copied controller credentials and revision checks before UI updates; stopped/switched sessions discard stale results. Health-check results also require the original session/node. "Entry available" is not an end-to-end login claim.
+- `LocalControllerTransport`: shared loopback-only GET/PUT/DELETE transport; no inherited proxy or redirects, response cap, connection/read timeout and total wall-clock abort deadline.
 - `UiButton` / `UiComboBox`: native keyboard/accessibility semantics with shared dark rendering.
 - `PrivacyCenterForm`: live configuration/request state, screenshot masking, bounded log actions, explicit local browser behavior test.
 - `PrivacyLog`: fixed event output only, size/age rotation, exact non-recursive log cleanup.
 - `BrowserPrivacyProbe`: Chrome/Edge-only temporary profiles, loopback HTTP/STUN fixtures, bounded local CDP requests; never attach to the user's current browser or claim global leak protection.
-- `ManagerContext`: local core and Codex lifecycle, with legacy Windows proxy recovery only.
+- `ManagerContext`: UI/tray orchestration, user actions and revision-checked presentation; no core Process ownership, YAML session preparation or node REST implementation.
+- `ProxySessionService`: owns the core, application launch/resume, private session config/state, scoped stale-core cleanup and watchdog startup. Stop is idempotent and deletes only state matching this service's owned session; idle services do not erase unknown sessions.
+- `RecoveryWatchdog`: separate recovery component, preserving executable/start-time/session-token checks.
+- `ControllerClient` / `IControllerClient`: immutable loopback endpoint/secret pair and injectable read/write boundary over the existing bounded transport.
+- `NodeControlService` / `NodeHealthPolicy`: catalog parsing, selector policy, copied delay snapshots, split core/node operations and per-node consecutive failure tracking. A missing explicitly configured selector is an error, not permission to control another group.
+- `DashboardPoller`: single-flight background collection with no Form/control references; the UI adapter still checks revisions before displaying results.
 - `ProcessProxyLauncher`: installed MSIX package discovery and direct executable launch with Electron proxy flags plus child-only proxy environment variables.
+- `RunningApplication`: bounded read-only WMI inspection of the exact executable's main processes; Windows argument parsing checks the same loopback proxy, bypass and privacy switches. Compatible Chromium/Electron sessions resume only the core, without target launch/termination. Raw process command lines stay in memory and are never logged or saved. Environment mode, unknown evidence, alternate proxy sources and mismatches fail closed.
 - `PrivacyProtection`: per-app optional launch restrictions for WebRTC, browser host resolution and QUIC. Requests are not enforcement guarantees; Electron may ignore WebRTC switches. No global policies or firewall rules are written.
 - `ApplicationConfiguration`: backward-compatible app registry, per-app profile bindings, executable validation and process-scoped session configuration.
 - `ApplicationManagerForm`: app onboarding, edit, removal, and selection UI.
@@ -48,7 +56,12 @@ New state files identify `NetworkMode: process`. All restore paths skip registry
 writes for these sessions. Only legacy sessions may restore a previously saved
 system proxy, conditional on the current endpoint still belonging to this manager.
 The emergency script follows the same distinction. Stopping the local core does
-not remove proxy arguments from an already running Codex; it must be restarted.
+not remove proxy arguments from an already running Codex. v0.11.1 can resume the
+core for matching Chromium/Electron launches without restarting the target, even
+after reopening the manager. Switching to direct, changing privacy flags or
+attaching to an ordinary launch still requires a restart. This is endpoint
+resumption, not runtime proxy injection; arguments are evidence of requested
+configuration, not proof of application behavior.
 
 Regression tests exercise child environment inheritance, actual isolated Mihomo
 startup/shutdown, unchanged Windows Internet Settings, crash cleanup, and stale
@@ -122,8 +135,8 @@ profile isolation and corrupt-file preservation alongside network regressions.
 
 ## v0.10 onboarding and release boundary
 
-AppInfo.Version is the sole numeric version source. Build scripts parse it for
-the default EXE filename and package metadata; assembly attributes and UI/report
+AppInfo.Version is the sole numeric version source. The EXE filename is fixed;
+build scripts parse the version for package metadata; assembly attributes and UI/report
 titles use it directly. build-common.ps1 owns the production source-file list.
 
 InstallationCheck reads required nonempty files, accepting cached per-user
@@ -140,8 +153,8 @@ test-package.ps1 builds an isolated fixture containing forbidden canary files an
 verifies exact archive entries, hashes, version and overwrite refusal. These
 checks do not prove that allowed source/doc contents are free of private data.
 UnitOnly tests omit installed-Codex and core-dependent integration; the complete
-test mode retains those checks. GitHub build configuration is provided but not
-yet validated on hosted runners. The project's original source is GPL-3.0-only,
+test mode retains those checks. Earlier releases have passed hosted CI; a new
+local revision is not validated there until its own run passes. The project's original source is GPL-3.0-only,
 attributed to Rinko; third-party licenses remain separate. Public distribution
 remains gated by RELEASE_CHECKLIST.md; this is not a signed, full-runtime v1.0 release.
 
@@ -154,7 +167,7 @@ no-redirect transport with 2.5-second request/read timeouts. The trigger is
 disabled while pending; completion avoids disposed controls. Results include
 only a selector count or fixed error categories, not raw server text. Closing
 the form does not abort an in-flight socket; it completes or times out in the
-background. Each request timeout is not a total deadline for a slow-drip body.
+background. Since v0.11.2 each request also has an abort deadline for slow-drip bodies.
 
 ControllerProbeTests use local fixture servers for authentication, invalid JSON
 structure, redirects and slow responses. A hidden native form plus timer/message
@@ -162,7 +175,30 @@ pump verifies the handler returns promptly and that the UI continues processing
 events until completion, without saving configuration. These are local tests,
 not a substitute for clean-OS or real external-client acceptance.
 
+## v0.11.2 recovery and persistence hardening
+
+Session state is size-bounded and atomically replaced. New states identify the
+session token and exact core executable/start time; the watchdog requires the
+original token and never kills a core solely by PID/name. Unverifiable legacy
+process identities are not killed by the watchdog. Scoped orphan cleanup checks
+an exact `-f` argument, executable and WMI creation time (microsecond precision).
+Recovery tooling also rechecks executable/creation time before stopping a process.
+All recorded paths/state stay in private user data, never diagnostic exports.
+
+Settings and favorites reject linked paths and oversized input. User config paths
+must be relative, contained in the data root, without alternate streams or linked
+parents. Duplicate/null profile identifiers fail with the original file retained.
+Controller URLs accept IPv4/IPv6 loopback or localhost, not URL credentials,
+non-root paths, query strings or fragments. These are local integrity checks,
+not encryption or protection against an attacker running as the same user.
+
 ## Planned backend adapters
+
+Since v0.11.3 lifecycle, node policy and polling have separate service boundaries,
+and unit tests inject IControllerClient fixtures rather than reflecting into
+ManagerContext's process fields. This prepares for adapters but does not implement
+sing-box, multi-session operation or transparent interception. The core remains
+Mihomo-specific, and the selected application still needs launch proxy support.
 
 Each backend should eventually implement start, stop, health, traffic, node list,
 latency test, and node switch operations. Planned adapters are:

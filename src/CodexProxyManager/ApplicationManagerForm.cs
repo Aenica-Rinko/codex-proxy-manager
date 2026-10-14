@@ -74,7 +74,7 @@ namespace CodexProxyManager
             CheckAt(quicBox, "关闭 QUIC / HTTP3（可选）", 402);
             privacyStatus = LabelAt("", 284, 440, 544, 76, 9);
             LabelAt("WebRTC 限制可能影响语音/视频。DNS 限制可能使内网域名和直连功能不可用；核心及其他进程的 DNS 不在保护范围。", 284, 518, 544, 48, 9);
-            LabelAt("保存后完全退出应用，再点击“启动应用”。应用必须支持所选代理方式；游戏、UWP 及其他不兼容程序不会自动获得保护。", 284, 568, 544, 34, 9);
+            LabelAt("修改启动/隐私参数后退出应用，再点“启动 / 恢复”。参数未变的兼容应用可直接恢复；不兼容程序不会自动获得保护。", 284, 568, 544, 34, 9);
             Button save = ButtonAt("保存并设为当前", 390, 604, 184);
             save.BackColor = Color.FromArgb(31, 111, 235);
             save.Click += SaveSelection;

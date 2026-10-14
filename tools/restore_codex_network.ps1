@@ -89,8 +89,18 @@ try {
             $_.ExecutablePath -and $_.ExecutablePath -in $projectCorePaths
         }
     foreach ($process in $projectCores) {
-        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-        $message += ' The project Mihomo process was stopped.'
+        $candidate = $null
+        try {
+            $candidate = Get-Process -Id $process.ProcessId -ErrorAction Stop
+            # Recheck identity instead of trusting a possibly reused CIM PID.
+            if ($candidate.Path -eq $process.ExecutablePath -and
+                [Math]::Abs(($candidate.StartTime.ToUniversalTime() - $process.CreationDate.ToUniversalTime()).Ticks) -lt 10) {
+                Stop-Process -InputObject $candidate -Force -ErrorAction Stop
+                $message += ' The project Mihomo process was stopped.'
+            }
+        }
+        catch { }
+        finally { if ($null -ne $candidate) { $candidate.Dispose() } }
     }
 
     Add-Type -AssemblyName PresentationFramework
@@ -104,7 +114,7 @@ try {
 catch {
     Add-Type -AssemblyName PresentationFramework
     [System.Windows.MessageBox]::Show(
-        $_.Exception.Message,
+        'Recovery could not complete. No raw configuration or private error details are shown. Check local permissions and manager state.',
         'Restore Codex Network',
         [System.Windows.MessageBoxButton]::OK,
         [System.Windows.MessageBoxImage]::Error

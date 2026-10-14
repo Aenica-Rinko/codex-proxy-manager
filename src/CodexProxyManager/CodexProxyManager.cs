@@ -1,13 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Management;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -27,6 +23,10 @@ namespace CodexProxyManager
         public string AutoConfigURL { get; set; }
         public int CorePid { get; set; }
         public string SavedAt { get; set; }
+        public string SessionId { get; set; }
+        public string CoreExecutablePath { get; set; }
+        public long CoreStartUtcTicks { get; set; }
+        public long ManagerStartUtcTicks { get; set; }
     }
 
     internal sealed class NodeInfo
@@ -41,6 +41,12 @@ namespace CodexProxyManager
         public long DownloadTotal { get; set; }
         public long UploadTotal { get; set; }
         public int Connections { get; set; }
+    }
+
+    internal sealed class ProxyCatalogSnapshot
+    {
+        internal string Group, Current;
+        internal List<NodeInfo> Nodes;
     }
 
 
@@ -174,14 +180,27 @@ namespace CodexProxyManager
 
         internal static ProxyState ReadState(string path)
         {
+            if (!PrivacyLog.SafePath(path) || new FileInfo(path).Length > 65536) throw new InvalidDataException();
             string json = File.ReadAllText(path, Encoding.UTF8);
-            return new JavaScriptSerializer().Deserialize<ProxyState>(json);
+            var state = new JavaScriptSerializer().Deserialize<ProxyState>(json);
+            if (state == null) throw new InvalidDataException();
+            return state;
         }
 
         internal static void WriteState(string path, ProxyState state)
         {
+            if (state == null || !PrivacyLog.SafePath(path)) throw new InvalidDataException();
+            if (String.IsNullOrEmpty(state.SessionId)) state.SessionId = Guid.NewGuid().ToString("N");
             string json = new JavaScriptSerializer().Serialize(state);
-            File.WriteAllText(path, json, new UTF8Encoding(false));
+            if (Encoding.UTF8.GetByteCount(json) > 65536) throw new InvalidDataException();
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(temporary, json, new UTF8Encoding(false));
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else File.Move(temporary, path);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
         internal static bool IsManagedProxyActive()
@@ -235,7 +254,6 @@ namespace CodexProxyManager
         private readonly string corePath;
         private readonly string coreHome;
         private string configPath;
-        private string sessionConfigPath;
         private ManagedApplication targetApplication;
         private readonly string statePath;
         private readonly string managerLog;
@@ -256,9 +274,7 @@ namespace CodexProxyManager
         private readonly ToolStripMenuItem stopItem;
         private readonly DashboardForm host;
         private readonly System.Windows.Forms.Timer timer;
-        private readonly object sessionLock = new object();
 
-        private Process coreProcess;
         private volatile bool sessionActive;
         private volatile bool busy;
         private volatile bool sawCodex;
@@ -266,8 +282,12 @@ namespace CodexProxyManager
         private int noCodexTicks;
         private int dashboardTicks;
         private int healthCheckTicks;
-        private int consecutiveHealthFailures;
         private int healthCheckRunning;
+        private ProxySessionService sessionService;
+        private NodeControlService nodeService;
+        private readonly DashboardPoller dashboardPoller = new DashboardPoller();
+        private int sessionRevision;
+        private volatile bool coreReachable;
         private long previousDownloadTotal;
         private long previousUploadTotal;
         private DateTime previousTrafficSample;
@@ -297,6 +317,7 @@ namespace CodexProxyManager
             autoFailover = startup.AutoFailover;
             preferredProxyGroupName = startup.ProxyGroupName;
             activeProfileName = startup.ProfileName;
+            BindServices(startup);
             RotateLog(managerLog);
             RotateLog(coreOutLog);
             RotateLog(coreErrLog);
@@ -334,7 +355,7 @@ namespace CodexProxyManager
             ContextMenuStrip menu = new ContextMenuStrip();
             statusItem = new ToolStripMenuItem("状态：正在初始化") { Enabled = false };
             ToolStripMenuItem dashboardItem = new ToolStripMenuItem("打开管理面板");
-            startItem = new ToolStripMenuItem("启动当前应用（专用代理）");
+            startItem = new ToolStripMenuItem("启动应用 / 恢复专用代理");
             stopItem = new ToolStripMenuItem("停止专用代理");
             ToolStripMenuItem profilesItem = new ToolStripMenuItem("管理代理档案");
             ToolStripMenuItem openItem = new ToolStripMenuItem("打开用户配置目录");
@@ -343,7 +364,12 @@ namespace CodexProxyManager
             startItem.Click += delegate { BeginStart(); };
             stopItem.Click += delegate { BeginStop(true); };
             profilesItem.Click += delegate { OpenProfileManager(); };
-            openItem.Click += delegate { Process.Start("explorer.exe", startup.UserDataRoot); };
+            openItem.Click += delegate { if (!host.ScreenshotPrivacy) Process.Start("explorer.exe", startup.UserDataRoot); };
+            menu.Opening += delegate
+            {
+                profilesItem.Enabled = !busy && !sessionActive && !host.ScreenshotPrivacy;
+                openItem.Enabled = !host.ScreenshotPrivacy;
+            };
             exitItem.Click += delegate { ExitManager(); };
             menu.Items.Add(statusItem);
             menu.Items.Add(new ToolStripSeparator());
@@ -373,7 +399,7 @@ namespace CodexProxyManager
         {
             // Opening the manager never starts an application. Only explicit
             // dashboard/tray start actions may call BeginStart.
-            bool codexRunning = IsCodexRunning();
+            bool codexRunning = sessionActive && IsCodexRunning();
             if (sessionActive && sawCodex)
             {
                 if (codexRunning)
@@ -384,8 +410,10 @@ namespace CodexProxyManager
 
             if (busy)
                 SetStatus("状态：正在处理…");
-            else if (sessionActive && TestPort(mixedPort, 150))
+            else if (sessionActive && coreReachable)
                 SetStatus("状态：运行中 · " + mixedPort);
+            else if (sessionActive)
+                SetStatus("状态：入口待检查 / 暂不可达");
             else
                 SetStatus("状态：专用代理已停止");
 
@@ -407,7 +435,7 @@ namespace CodexProxyManager
 
         private void UpdateDashboard()
         {
-            if (!sessionActive || !TestPort(mixedPort, 100))
+            if (!sessionActive)
             {
                 previousTrafficSample = DateTime.MinValue;
                 previousDownloadTotal = 0;
@@ -422,123 +450,57 @@ namespace CodexProxyManager
                 return;
             }
 
-            try
+            if (dashboardPoller.IsPending) return;
+            int revision = sessionRevision;
+            bool refreshNodes = currentNodes.Count == 0 || ++dashboardTicks % 5 == 0;
+            dashboardPoller.Begin(mixedPort, nodeService, refreshNodes, delegate(DashboardSnapshot result)
             {
-                dashboardTicks++;
-                if (currentNodes.Count == 0 || dashboardTicks % 5 == 0)
+                bool reachable = result.Reachable;
+                TrafficSnapshot traffic = result.Traffic;
+                ProxyCatalogSnapshot catalog = result.Catalog;
+                if (result.ReadFailed) Program.AppendLog(managerLog, "Dashboard refresh error.");
+                Ui(delegate
                 {
-                    RefreshProxyInfo();
-                    host.UpdateNodes(currentNodes, currentNodeName);
-                }
-
-                TrafficSnapshot snapshot = GetTrafficSnapshot();
-                DateTime now = DateTime.Now;
-                double downloadRate = 0;
-                double uploadRate = 0;
-                if (previousTrafficSample != DateTime.MinValue)
-                {
+                    // A slow old response must not repopulate a stopped/switched session.
+                    if (!sessionActive || busy || sessionRevision != revision) return;
+                    coreReachable = reachable;
+                    if (catalog != null)
+                    {
+                        proxyGroupName = catalog.Group; currentNodeName = catalog.Current; currentNodes = catalog.Nodes;
+                        host.UpdateNodes(currentNodes, currentNodeName);
+                    }
+                    if (traffic == null)
+                    {
+                        previousTrafficSample = DateTime.MinValue;
+                        host.UpdateStatus(true, reachable ? "控制接口暂不可用" : "代理入口不可达", currentNodeName,
+                            0, 0, previousDownloadTotal, previousUploadTotal, 0);
+                        return;
+                    }
+                    DateTime now = DateTime.UtcNow;
                     double seconds = Math.Max(0.2, (now - previousTrafficSample).TotalSeconds);
-                    downloadRate = Math.Max(0, snapshot.DownloadTotal - previousDownloadTotal) / seconds;
-                    uploadRate = Math.Max(0, snapshot.UploadTotal - previousUploadTotal) / seconds;
-                }
-                previousTrafficSample = now;
-                previousDownloadTotal = snapshot.DownloadTotal;
-                previousUploadTotal = snapshot.UploadTotal;
-                host.UpdateStatus(true, busy ? "正在处理" : "已连接", currentNodeName,
-                    downloadRate, uploadRate, snapshot.DownloadTotal, snapshot.UploadTotal, snapshot.Connections);
-            }
-            catch (Exception ex)
-            {
-                host.UpdateStatus(true, "代理运行中", currentNodeName, 0, 0,
-                    previousDownloadTotal, previousUploadTotal, 0);
-                if (dashboardTicks % 15 == 0) Program.AppendLog(managerLog, "Dashboard refresh error: " + ex.Message);
-            }
-        }
-
-        private TrafficSnapshot GetTrafficSnapshot()
-        {
-            Dictionary<string, object> root = CoreApiGet("/connections");
-            TrafficSnapshot snapshot = new TrafficSnapshot();
-            snapshot.DownloadTotal = ToInt64(GetValue(root, "downloadTotal"));
-            snapshot.UploadTotal = ToInt64(GetValue(root, "uploadTotal"));
-            object connections = GetValue(root, "connections");
-            IList list = connections as IList;
-            snapshot.Connections = list == null ? 0 : list.Count;
-            return snapshot;
+                    double down = previousTrafficSample == DateTime.MinValue ? 0 : Math.Max(0, traffic.DownloadTotal - previousDownloadTotal) / seconds;
+                    double up = previousTrafficSample == DateTime.MinValue ? 0 : Math.Max(0, traffic.UploadTotal - previousUploadTotal) / seconds;
+                    previousTrafficSample = now;
+                    previousDownloadTotal = traffic.DownloadTotal; previousUploadTotal = traffic.UploadTotal;
+                    host.UpdateStatus(true, result.ReadFailed ? "节点信息待更新" : "入口可用", currentNodeName,
+                        down, up, traffic.DownloadTotal, traffic.UploadTotal, traffic.Connections);
+                });
+            });
         }
 
         private void RefreshProxyInfo()
         {
-            Dictionary<string, object> root = NodeApiGet("/proxies");
-            Dictionary<string, object> proxies = GetValue(root, "proxies") as Dictionary<string, object>;
-            if (proxies == null) return;
-
-            Dictionary<string, object> selector = null;
-            string selectorName = null;
-            int selectorScore = -1;
-            foreach (KeyValuePair<string, object> pair in proxies)
-            {
-                Dictionary<string, object> candidate = pair.Value as Dictionary<string, object>;
-                if (candidate == null || !String.Equals(Convert.ToString(GetValue(candidate, "type")), "Selector", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                List<string> all = ToStringList(GetValue(candidate, "all"));
-                bool isGlobal = all.Any(delegate(string name) { return String.Equals(name, "REJECT", StringComparison.OrdinalIgnoreCase); });
-                int leafNodeCount = 0;
-                foreach (string memberName in all)
-                {
-                    if (String.Equals(memberName, "DIRECT", StringComparison.OrdinalIgnoreCase) ||
-                        String.Equals(memberName, "REJECT", StringComparison.OrdinalIgnoreCase)) continue;
-                    object memberValue;
-                    Dictionary<string, object> member = proxies.TryGetValue(memberName, out memberValue)
-                        ? memberValue as Dictionary<string, object> : null;
-                    string memberType = Convert.ToString(GetValue(member, "type"));
-                    if (!String.Equals(memberType, "Selector", StringComparison.OrdinalIgnoreCase) &&
-                        !String.Equals(memberType, "URLTest", StringComparison.OrdinalIgnoreCase) &&
-                        !String.Equals(memberType, "Fallback", StringComparison.OrdinalIgnoreCase) &&
-                        !String.Equals(memberType, "LoadBalance", StringComparison.OrdinalIgnoreCase))
-                        leafNodeCount++;
-                }
-                if (!String.IsNullOrWhiteSpace(preferredProxyGroupName) &&
-                    String.Equals(pair.Key, preferredProxyGroupName, StringComparison.OrdinalIgnoreCase))
-                {
-                    selector = candidate;
-                    selectorName = pair.Key;
-                    break;
-                }
-                if (!isGlobal && leafNodeCount > selectorScore)
-                {
-                    selector = candidate;
-                    selectorName = pair.Key;
-                    selectorScore = leafNodeCount;
-                }
-            }
-            if (selector == null) return;
-
-            proxyGroupName = selectorName;
-            currentNodeName = Convert.ToString(GetValue(selector, "now"));
-            List<NodeInfo> nodes = new List<NodeInfo>();
-            foreach (string name in ToStringList(GetValue(selector, "all")))
-            {
-                if (String.Equals(name, "DIRECT", StringComparison.OrdinalIgnoreCase) ||
-                    String.Equals(name, "REJECT", StringComparison.OrdinalIgnoreCase)) continue;
-                Dictionary<string, object> detail = null;
-                object value;
-                if (proxies.TryGetValue(name, out value)) detail = value as Dictionary<string, object>;
-                if (detail == null) continue;
-                nodes.Add(new NodeInfo
-                {
-                    Name = name,
-                    Type = Convert.ToString(GetValue(detail, "type")),
-                    Delay = GetLatestDelay(detail)
-                });
-            }
-            currentNodes = nodes;
+            ProxyCatalogSnapshot catalog = nodeService.ReadCatalog();
+            proxyGroupName = catalog.Group;
+            currentNodeName = catalog.Current;
+            currentNodes = catalog.Nodes;
         }
 
         private void BeginLatencyTest()
         {
             if (busy || !sessionActive) return;
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在并行测试所有节点延迟…");
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -565,14 +527,14 @@ namespace CodexProxyManager
         {
             if (busy || !sessionActive) return;
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, automatic ? "正在自动选择可用节点…" : "正在测速并选择最低延迟节点…");
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
                     MeasureGroupDelays();
-                    NodeInfo fastest = currentNodes.Where(delegate(NodeInfo node) { return node.Delay > 0; })
-                        .OrderBy(delegate(NodeInfo node) { return node.Delay; }).FirstOrDefault();
+                    NodeInfo fastest = NodeControlService.Fastest(currentNodes);
                     if (fastest == null) throw new InvalidOperationException("没有检测到可用节点。");
                     bool switched = SwitchNodeCore(fastest.Name);
                     Ui(delegate { host.UpdateNodes(currentNodes, currentNodeName); });
@@ -603,26 +565,17 @@ namespace CodexProxyManager
             });
         }
 
-        private Dictionary<string, object> MeasureGroupDelays()
+        private void MeasureGroupDelays()
         {
             if (String.IsNullOrWhiteSpace(proxyGroupName)) RefreshProxyInfo();
-            if (String.IsNullOrWhiteSpace(proxyGroupName)) throw new InvalidOperationException("找不到可测速的代理策略组。");
-            string path = "/group/" + Uri.EscapeDataString(proxyGroupName) +
-                "/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=10000";
-            Dictionary<string, object> delays = NodeApiGet(path);
-            foreach (NodeInfo node in currentNodes)
-            {
-                node.Delay = 0;
-                object delay;
-                if (delays.TryGetValue(node.Name, out delay)) node.Delay = Convert.ToInt32(delay);
-            }
-            return delays;
+            currentNodes = nodeService.MeasureDelays(proxyGroupName, currentNodes);
         }
 
         private void BeginNodeSwitch(string nodeName)
         {
             if (busy || !sessionActive || String.IsNullOrWhiteSpace(nodeName)) return;
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在切换到 " + nodeName + "…");
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -651,11 +604,9 @@ namespace CodexProxyManager
             if (String.IsNullOrWhiteSpace(proxyGroupName)) RefreshProxyInfo();
             if (String.IsNullOrWhiteSpace(proxyGroupName)) throw new InvalidOperationException("找不到可切换的代理策略组。");
             if (String.Equals(currentNodeName, nodeName, StringComparison.Ordinal)) return false;
-            string groupPath = "/proxies/" + Uri.EscapeDataString(proxyGroupName);
-            NodeApiPut(groupPath, new JavaScriptSerializer().Serialize(new Dictionary<string, string> { { "name", nodeName } }));
-            CoreApiDelete("/connections");
+            nodeService.Switch(proxyGroupName, nodeName);
             currentNodeName = nodeName;
-            consecutiveHealthFailures = 0;
+            nodeService.Health.Reset();
             RefreshProxyInfo();
             return true;
         }
@@ -664,25 +615,13 @@ namespace CodexProxyManager
         {
             if (busy || !sessionActive) return;
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在刷新远程订阅…");
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    Dictionary<string, object> root = NodeApiGet("/providers/proxies");
-                    Dictionary<string, object> providers = GetValue(root, "providers") as Dictionary<string, object>;
-                    int updated = 0;
-                    if (providers != null)
-                    {
-                        foreach (KeyValuePair<string, object> pair in providers)
-                        {
-                            Dictionary<string, object> provider = pair.Value as Dictionary<string, object>;
-                            string vehicle = Convert.ToString(GetValue(provider, "vehicleType"));
-                            if (!String.Equals(vehicle, "HTTP", StringComparison.OrdinalIgnoreCase)) continue;
-                            NodeApiPutEmpty("/providers/proxies/" + Uri.EscapeDataString(pair.Key));
-                            updated++;
-                        }
-                    }
+                    int updated = nodeService.RefreshProviders();
                     if (updated == 0)
                     {
                         Notify("当前档案没有远程订阅，无需刷新。", ToolTipIcon.Info);
@@ -715,17 +654,17 @@ namespace CodexProxyManager
             });
             if (!isManagedNode || Interlocked.CompareExchange(ref healthCheckRunning, 1, 0) != 0) return;
             string checkedNode = currentNodeName;
+            int revision = sessionRevision;
+            NodeControlService checkedService = nodeService;
             ThreadPool.QueueUserWorkItem(delegate
             {
                 bool triggerFailover = false;
                 try
                 {
-                    string path = "/proxies/" + Uri.EscapeDataString(checkedNode) +
-                        "/delay?url=https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000";
-                    Dictionary<string, object> result = NodeApiGet(path);
-                    int delay = Convert.ToInt32(GetValue(result, "delay") ?? 0);
+                    int delay = checkedService.ProbeNode(checkedNode);
+                    if (!sessionActive || sessionRevision != revision || currentNodeName != checkedNode) return;
                     if (delay <= 0) throw new InvalidOperationException("节点探测未返回有效延迟。");
-                    consecutiveHealthFailures = 0;
+                    checkedService.Health.Record(checkedNode, true);
                     NodeInfo node = currentNodes.FirstOrDefault(delegate(NodeInfo item)
                     {
                         return String.Equals(item.Name, checkedNode, StringComparison.Ordinal);
@@ -734,11 +673,12 @@ namespace CodexProxyManager
                 }
                 catch (Exception ex)
                 {
-                    int failures = Interlocked.Increment(ref consecutiveHealthFailures);
+                    if (!sessionActive || sessionRevision != revision || currentNodeName != checkedNode) return;
+                    int failures = checkedService.Health.Record(checkedNode, false);
                     Program.AppendLog(managerLog, "Health check failed for " + checkedNode + " (" + failures + "/3): " + ex.Message);
-                    if (failures >= 3)
+                    if (failures >= NodeHealthPolicy.FailoverThreshold)
                     {
-                        consecutiveHealthFailures = 0;
+                        checkedService.Health.Reset();
                         triggerFailover = true;
                     }
                 }
@@ -751,94 +691,20 @@ namespace CodexProxyManager
                     Program.AppendLog(managerLog, "Auto failover triggered for " + checkedNode + ".");
                     Ui(delegate
                     {
-                        if (!busy && sessionActive) BeginFastestSelection(true);
+                        if (!busy && sessionActive && sessionRevision == revision && currentNodeName == checkedNode) BeginFastestSelection(true);
                     });
                 }
             });
         }
 
-        private Dictionary<string, object> CoreApiGet(string path)
+        private void BindServices(StartupProfile startup)
         {
-            return ApiGet("http://127.0.0.1:" + controllerPort, controllerSecret, path);
-        }
-
-        private Dictionary<string, object> NodeApiGet(string path)
-        {
-            return ApiGet(nodeControllerUrl, nodeControllerSecret, path);
-        }
-
-        private static Dictionary<string, object> ApiGet(string baseUrl, string secret, string path)
-        {
-            using (WebClient client = CreateApiClient(secret))
-            {
-                string json = client.DownloadString(baseUrl + path);
-                return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
-            }
-        }
-
-        private void NodeApiPut(string path, string body)
-        {
-            using (WebClient client = CreateApiClient(nodeControllerSecret))
-            {
-                client.Headers[HttpRequestHeader.ContentType] = "application/json; charset=utf-8";
-                client.UploadString(nodeControllerUrl + path, "PUT", body);
-            }
-        }
-
-        private void NodeApiPutEmpty(string path)
-        {
-            using (WebClient client = CreateApiClient(nodeControllerSecret))
-            {
-                client.UploadString(nodeControllerUrl + path, "PUT", "");
-            }
-        }
-
-        private void CoreApiDelete(string path)
-        {
-            using (WebClient client = CreateApiClient(controllerSecret))
-            {
-                client.UploadString("http://127.0.0.1:" + controllerPort + path, "DELETE", "");
-            }
-        }
-
-        private static WebClient CreateApiClient(string secret)
-        {
-            WebClient client = new WebClient();
-            client.Proxy = null;
-            client.Encoding = Encoding.UTF8;
-            if (!String.IsNullOrWhiteSpace(secret))
-                client.Headers[HttpRequestHeader.Authorization] = "Bearer " + secret;
-            return client;
-        }
-
-        private static object GetValue(Dictionary<string, object> values, string name)
-        {
-            object value;
-            return values != null && values.TryGetValue(name, out value) ? value : null;
-        }
-
-        private static long ToInt64(object value)
-        {
-            if (value == null) return 0;
-            try { return Convert.ToInt64(value); }
-            catch { return 0; }
-        }
-
-        private static List<string> ToStringList(object value)
-        {
-            List<string> result = new List<string>();
-            IList list = value as IList;
-            if (list == null) return result;
-            foreach (object item in list) result.Add(Convert.ToString(item));
-            return result;
-        }
-
-        private static int GetLatestDelay(Dictionary<string, object> detail)
-        {
-            IList history = GetValue(detail, "history") as IList;
-            if (history == null || history.Count == 0) return 0;
-            Dictionary<string, object> latest = history[history.Count - 1] as Dictionary<string, object>;
-            return latest == null ? 0 : Convert.ToInt32(GetValue(latest, "delay") ?? 0);
+            if (sessionService != null) sessionService.Dispose();
+            sessionService = new ProxySessionService(startup);
+            var core = new ControllerClient("http://127.0.0.1:" + startup.ControllerPort, startup.ControllerSecret);
+            var node = String.IsNullOrWhiteSpace(startup.NodeControllerUrl) ? core :
+                new ControllerClient(startup.NodeControllerUrl, startup.NodeControllerSecret);
+            nodeService = new NodeControlService(core, node, startup.ProxyGroupName);
         }
 
         private void OpenProfileManager()
@@ -849,7 +715,7 @@ namespace CodexProxyManager
         private DiagnosticInput CaptureDiagnosticInput()
         {
             bool alive = false;
-            try { alive = coreProcess != null && !coreProcess.HasExited; } catch { }
+            try { alive = sessionService != null && sessionService.CoreAlive; } catch { }
             return new DiagnosticInput
             {
                 CorePath = corePath, ConfigPath = configPath, CoreHome = coreHome, StatePath = statePath,
@@ -866,14 +732,16 @@ namespace CodexProxyManager
         private void OpenConfiguration(bool applications)
         {
             if (busy) return;
+            if (host.ScreenshotPrivacy) { Notify("截图模式下不能打开私人配置窗口。", ToolTipIcon.Info); return; }
             if (sessionActive)
             {
-                MessageBox.Show("请先点击“停止专用代理”，再切换应用或代理档案。\n再次启动前，需要完全退出所选应用。",
+                MessageBox.Show("请先点击“停止代理”，再切换应用或代理档案。\n修改启动端口或隐私参数后需要重新启动目标应用。",
                     "代理正在运行", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在管理代理档案…");
             try
             {
@@ -884,9 +752,11 @@ namespace CodexProxyManager
                 }
                 else if (!StartupConfiguration.RunSetup(projectRoot)) return;
                 StartupProfile updated = StartupConfiguration.LoadOrCreate(projectRoot);
+                if (updated == null) return;
                 if (updated.MixedPort != mixedPort || updated.ControllerPort != controllerPort ||
                     !String.Equals(updated.ControllerSecret, controllerSecret, StringComparison.Ordinal))
                     throw new InvalidOperationException("本地端口或管理密钥发生变化，请退出管理器后重新打开。");
+                BindServices(updated);
                 configPath = updated.ConfigPath;
                 targetApplication = updated.Application;
                 host.SetApplicationName(targetApplication.Name);
@@ -927,7 +797,8 @@ namespace CodexProxyManager
                 return;
             }
             busy = true;
-            host.SetBusy(true, "正在启动专用代理并打开 " + targetApplication.Name + "…");
+            Interlocked.Increment(ref sessionRevision);
+            host.SetBusy(true, "正在检查应用并启动专用代理…");
             ThreadPool.QueueUserWorkItem(delegate { StartSessionWorker(); });
         }
 
@@ -936,42 +807,11 @@ namespace CodexProxyManager
             bool startedSuccessfully = false;
             try
             {
-                lock (sessionLock)
-                {
-                    RecoverStaleSession();
-                    if (IsCodexRunning())
-                        throw new InvalidOperationException("检测到 " + targetApplication.Name + " 已经运行。请完全退出该应用后再启动专用代理。");
-
-                    ValidateFiles();
-                    string executable = ApplicationConfiguration.ResolveExecutable(targetApplication);
-                    if (targetApplication.Id != "codex")
-                    {
-                        string yaml = ApplicationConfiguration.BuildSessionConfig(File.ReadAllText(configPath, Encoding.UTF8), targetApplication);
-                        sessionConfigPath = Path.Combine(Path.GetDirectoryName(statePath), "session-config.yaml");
-                        File.WriteAllText(sessionConfigPath, yaml, new UTF8Encoding(false));
-                    }
-                    StartCore();
-                    ProxyState state = new ProxyState
-                    {
-                        NetworkMode = "process",
-                        CorePid = coreProcess.Id,
-                        SavedAt = DateTime.UtcNow.ToString("o")
-                    };
-                    Program.WriteState(statePath, state);
-                    StartWatchdog(coreProcess.Id);
-                    using (Process application = Process.Start(ProcessProxyLauncher.BuildStartInfo(executable, mixedPort, targetApplication)))
-                        Program.AppendLog(managerLog, "Launched application PID " + application.Id + " with process-only proxy; Windows proxy unchanged.");
-
-                    DateTime deadline = DateTime.Now.AddSeconds(12);
-                    while (DateTime.Now < deadline && !IsCodexRunning()) Thread.Sleep(250);
-                    if (!IsCodexRunning()) throw new InvalidOperationException("未检测到应用进程，可能程序已退出或不支持所选启动方式。");
-
-                    sawCodex = true;
-                    noCodexTicks = 0;
-                    sessionActive = true;
-                }
+                bool resumed = sessionService.Start(targetApplication);
+                sawCodex = true; noCodexTicks = 0; sessionActive = true; coreReachable = true;
                 startedSuccessfully = true;
-                Notify(targetApplication.Name + " 专用代理已启动。", ToolTipIcon.Info);
+                Notify(resumed ? "代理已恢复，未重启当前应用。应用可能需要重新连接；启动参数效果仍需验证。" :
+                    targetApplication.Name + " 专用代理已启动。", ToolTipIcon.Info);
             }
             catch (Exception ex)
             {
@@ -994,13 +834,14 @@ namespace CodexProxyManager
         {
             if (busy) return;
             busy = true;
+            Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在停止 Codex 专用代理…");
             ThreadPool.QueueUserWorkItem(delegate
             {
                 try
                 {
-                    lock (sessionLock) { EndSessionCore(); }
-                    if (notify) Notify("专用代理已停止。若要继续使用，请完全退出当前应用后重新启动。", ToolTipIcon.Info);
+                    EndSessionCore();
+                    if (notify) Notify("专用代理已停止，应用未关闭，也不会自动改为直连。匹配原启动参数的 Chromium/Electron 应用可点击“启动 / 恢复”重新开启代理。", ToolTipIcon.Info);
                 }
                 catch (Exception ex)
                 {
@@ -1015,77 +856,6 @@ namespace CodexProxyManager
             });
         }
 
-        private void ValidateFiles()
-        {
-            if (!File.Exists(corePath)) throw new FileNotFoundException("找不到内置 Mihomo 核心。", corePath);
-            if (!File.Exists(configPath)) throw new FileNotFoundException("找不到代理配置。", configPath);
-            if (!File.Exists(Path.Combine(coreHome, "GeoSite.dat"))) throw new FileNotFoundException("找不到 GeoSite.dat。", coreHome);
-            if (!File.Exists(Path.Combine(coreHome, "geoip.metadb"))) throw new FileNotFoundException("找不到 geoip.metadb。", coreHome);
-            if (TestPort(mixedPort, 150)) throw new InvalidOperationException("端口 " + mixedPort + " 已被其他程序占用。");
-            if (TestPort(controllerPort, 150)) throw new InvalidOperationException("管理接口端口 " + controllerPort + " 已被其他程序占用。");
-        }
-
-        private void StartCore()
-        {
-            ProcessStartInfo info = new ProcessStartInfo();
-            info.FileName = corePath;
-            info.Arguments = "-d " + Quote(coreHome) + " -f " + Quote(sessionConfigPath ?? configPath) +
-                " -ext-ctl 127.0.0.1:" + controllerPort + " -secret " + Quote(controllerSecret);
-            info.WorkingDirectory = Path.GetDirectoryName(configPath);
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true;
-            info.WindowStyle = ProcessWindowStyle.Hidden;
-            info.RedirectStandardOutput = true;
-            info.RedirectStandardError = true;
-            coreProcess = new Process();
-            coreProcess.StartInfo = info;
-            coreProcess.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
-            {
-                if (e.Data != null) AppendCoreLog(coreOutLog, e.Data);
-            };
-            coreProcess.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
-            {
-                if (e.Data != null) AppendCoreLog(coreErrLog, e.Data);
-            };
-            coreProcess.Start();
-            coreProcess.BeginOutputReadLine();
-            coreProcess.BeginErrorReadLine();
-            Program.AppendLog(managerLog, "Started bundled Mihomo PID " + coreProcess.Id + ".");
-
-            DateTime deadline = DateTime.Now.AddSeconds(35);
-            while (DateTime.Now < deadline)
-            {
-                if (coreProcess.HasExited) throw new InvalidOperationException("Mihomo 启动失败，退出代码：" + coreProcess.ExitCode);
-                if (TestPort(mixedPort, 250)) { ReduceCoreLogging(); return; }
-                Thread.Sleep(200);
-            }
-            throw new TimeoutException("代理核心未能在 35 秒内监听端口 " + mixedPort + "。");
-        }
-
-        private void AppendCoreLog(string path, string line)
-        {
-            PrivacyLog.AppendCore(path, line);
-        }
-
-        private void ReduceCoreLogging()
-        {
-            try
-            {
-                var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + controllerPort + "/configs");
-                request.Method = "PATCH";
-                request.Proxy = null;
-                request.AllowAutoRedirect = false;
-                request.Timeout = request.ReadWriteTimeout = 2000;
-                request.ContentType = "application/json";
-                request.Headers[HttpRequestHeader.Authorization] = "Bearer " + controllerSecret;
-                byte[] body = Encoding.UTF8.GetBytes("{\"log-level\":\"warning\"}");
-                request.ContentLength = body.Length;
-                using (var stream = request.GetRequestStream()) stream.Write(body, 0, body.Length);
-                using (var response = request.GetResponse()) { }
-            }
-            catch { Program.AppendLog(managerLog, "Core log preference error."); }
-        }
-
         private static void RotateLog(string path)
         {
             try
@@ -1097,28 +867,15 @@ namespace CodexProxyManager
 
         private void EndSessionCore()
         {
-            ProxyState state = null;
-            if (File.Exists(statePath))
-            {
-                try { state = Program.ReadState(statePath); }
-                catch (Exception ex) { Program.AppendLog(managerLog, "Could not read state: " + ex.Message); }
-            }
-
-            if (state != null) Program.RestoreProxy(state, managerLog);
-            StopCore();
-            if (!String.IsNullOrEmpty(sessionConfigPath))
-            {
-                try { File.Delete(sessionConfigPath); } catch { }
-                sessionConfigPath = null;
-            }
-            try { if (File.Exists(statePath)) File.Delete(statePath); } catch { }
+            Interlocked.Increment(ref sessionRevision);
+            coreReachable = false;
+            if (sessionService != null) sessionService.Stop();
             sessionActive = false;
             sawCodex = false;
             noCodexTicks = 0;
             dashboardTicks = 0;
             healthCheckTicks = 0;
-            consecutiveHealthFailures = 0;
-            Interlocked.Exchange(ref healthCheckRunning, 0);
+            if (nodeService != null) nodeService.Health.Reset();
             previousTrafficSample = DateTime.MinValue;
             previousDownloadTotal = 0;
             previousUploadTotal = 0;
@@ -1128,75 +885,6 @@ namespace CodexProxyManager
             Program.AppendLog(managerLog, "Session ended.");
         }
 
-        private void StopCore()
-        {
-            try
-            {
-                if (coreProcess != null && !coreProcess.HasExited)
-                {
-                    int pid = coreProcess.Id;
-                    coreProcess.Kill();
-                    coreProcess.WaitForExit(5000);
-                    Program.AppendLog(managerLog, "Stopped bundled Mihomo PID " + pid + ".");
-                }
-            }
-            catch (Exception ex) { Program.AppendLog(managerLog, "Could not stop core: " + ex.Message); }
-            finally
-            {
-                if (coreProcess != null) coreProcess.Dispose();
-                coreProcess = null;
-            }
-        }
-
-        private void RecoverStaleSession()
-        {
-            if (File.Exists(statePath))
-            {
-                Program.AppendLog(managerLog, "Found stale manager state.");
-                try { Program.RestoreProxy(Program.ReadState(statePath), managerLog); }
-                catch (Exception ex) { Program.AppendLog(managerLog, "Stale restore error: " + ex.Message); }
-            }
-            StopBundledOrphanCores();
-            try { if (File.Exists(statePath)) File.Delete(statePath); } catch { }
-        }
-
-        private void StopBundledOrphanCores()
-        {
-            try
-            {
-                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
-                    "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='mihomo.exe'"))
-                {
-                    foreach (ManagementObject item in searcher.Get())
-                    {
-                        string command = Convert.ToString(item["CommandLine"]);
-                        if (command.IndexOf(corePath, StringComparison.OrdinalIgnoreCase) >= 0 &&
-                            (command.IndexOf(configPath, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             command.IndexOf(Path.Combine(Path.GetDirectoryName(statePath), "session-config.yaml"), StringComparison.OrdinalIgnoreCase) >= 0))
-                        {
-                            int pid = Convert.ToInt32((uint)item["ProcessId"]);
-                            try { Process.GetProcessById(pid).Kill(); Program.AppendLog(managerLog, "Stopped stale bundled core PID " + pid + "."); }
-                            catch { }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex) { Program.AppendLog(managerLog, "Orphan scan error: " + ex.Message); }
-        }
-
-        private void StartWatchdog(int corePid)
-        {
-            ProcessStartInfo info = new ProcessStartInfo();
-            info.FileName = Application.ExecutablePath;
-            info.Arguments = "--watchdog " + Process.GetCurrentProcess().Id + " " + corePid + " " +
-                Quote(statePath) + " " + Quote(managerLog) + " " + Quote(Program.ManagedProxy);
-            info.UseShellExecute = false;
-            info.CreateNoWindow = true;
-            info.WindowStyle = ProcessWindowStyle.Hidden;
-            Process.Start(info);
-            Program.AppendLog(managerLog, "Started recovery watchdog.");
-        }
-
         private bool IsCodexRunning()
         {
             try
@@ -1204,26 +892,6 @@ namespace CodexProxyManager
                 return ApplicationConfiguration.IsRunning(targetApplication);
             }
             catch { return false; }
-        }
-
-        private static bool TestPort(int port, int timeoutMs)
-        {
-            using (TcpClient client = new TcpClient())
-            {
-                try
-                {
-                    IAsyncResult result = client.BeginConnect("127.0.0.1", port, null, null);
-                    if (!result.AsyncWaitHandle.WaitOne(timeoutMs)) return false;
-                    client.EndConnect(result);
-                    return client.Connected;
-                }
-                catch { return false; }
-            }
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
 
         private void Notify(string message, ToolTipIcon icon)
@@ -1266,14 +934,29 @@ namespace CodexProxyManager
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            try { lock (sessionLock) { EndSessionCore(); } }
-            catch (Exception ex) { MessageBox.Show(ex.Message, "Codex Proxy Manager", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            allowExit = true;
-            timer.Stop();
-            tray.Visible = false;
-            tray.Dispose();
-            host.Close();
-            ExitThread();
+            busy = true;
+            Interlocked.Increment(ref sessionRevision);
+            host.SetBusy(true, "正在停止专用核心并安全退出…");
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { EndSessionCore(); }
+                catch
+                {
+                    busy = false;
+                    ShowError("退出清理未完成，请检查连接诊断后重试。目标应用未被关闭。");
+                    Ui(delegate { host.SetBusy(false, ""); });
+                    return;
+                }
+                Ui(delegate
+                {
+                    allowExit = true;
+                    timer.Stop();
+                    tray.Visible = false;
+                    tray.Dispose();
+                    host.Close();
+                    ExitThread();
+                });
+            });
         }
 
         private void HostFormClosing(object sender, FormClosingEventArgs e)
@@ -1290,48 +973,6 @@ namespace CodexProxyManager
             try { if (File.Exists(statePath)) EndSessionCore(); } catch { }
             Program.AppendLog(managerLog, "Manager exited.");
             base.ExitThreadCore();
-        }
-    }
-
-    internal static class RecoveryWatchdog
-    {
-        internal static void Run(string[] args)
-        {
-            int managerPid;
-            int corePid;
-            if (!Int32.TryParse(args[1], out managerPid) || !Int32.TryParse(args[2], out corePid)) return;
-            string statePath = args[3];
-            string logPath = args[4];
-            if (args.Length >= 6 && !String.IsNullOrWhiteSpace(args[5])) Program.ManagedProxy = args[5];
-            try
-            {
-                while (IsProcessRunning(managerPid))
-                {
-                    // A normal stop removes the session state before the manager exits.
-                    // Exit immediately so old watchdog processes cannot accumulate.
-                    if (!File.Exists(statePath) || Program.ReadState(statePath).CorePid != corePid) return;
-                    Thread.Sleep(1000);
-                }
-                if (!File.Exists(statePath) || Program.ReadState(statePath).CorePid != corePid) return;
-                Program.AppendLog(logPath, "Watchdog detected an unexpected manager exit.");
-                try { Program.RestoreProxy(Program.ReadState(statePath), logPath); }
-                catch (Exception ex) { Program.AppendLog(logPath, "Watchdog restore error: " + ex.Message); }
-                try
-                {
-                    Process core = Process.GetProcessById(corePid);
-                    if (String.Equals(core.ProcessName, "mihomo", StringComparison.OrdinalIgnoreCase)) core.Kill();
-                }
-                catch { }
-                try { File.Delete(statePath); } catch { }
-                Program.AppendLog(logPath, "Watchdog cleanup finished.");
-            }
-            catch (Exception ex) { Program.AppendLog(logPath, "Watchdog error: " + ex.Message); }
-        }
-
-        private static bool IsProcessRunning(int pid)
-        {
-            try { Process process = Process.GetProcessById(pid); return !process.HasExited; }
-            catch { return false; }
         }
     }
 

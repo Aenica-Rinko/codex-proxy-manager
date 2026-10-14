@@ -63,6 +63,7 @@ namespace CodexProxyManager
         private readonly Label statusLabel;
         private bool changed;
         private bool controllerTestRunning;
+        private bool localTestRunning;
 
         private ProfileManagerForm(string projectRoot, string userRoot, bool firstRun)
         {
@@ -246,9 +247,13 @@ namespace CodexProxyManager
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
-                SaveSettings();
-                DialogResult = changed ? DialogResult.OK : DialogResult.Cancel;
-                Close();
+                try
+                {
+                    SaveSettings();
+                    DialogResult = changed ? DialogResult.OK : DialogResult.Cancel;
+                    Close();
+                }
+                catch { SetStatus("设置保存失败，请检查目录权限或设置文件；窗口保留供重试。", false); }
             };
 
             RefreshProfileList();
@@ -317,9 +322,7 @@ namespace CodexProxyManager
         {
             ProfileListItem item = profileList.SelectedItem as ProfileListItem;
             if (item == null) return;
-            settings.ActiveProfileId = item.Profile.Id;
-            FollowActiveProfile();
-            SaveSettings();
+            if (!CommitChange(delegate { settings.ActiveProfileId = item.Profile.Id; FollowActiveProfile(); })) return;
             changed = true;
             SetStatus("已选择“" + item.Profile.Name + "”。关闭窗口后即可使用。", true);
             RefreshProfileList();
@@ -338,10 +341,12 @@ namespace CodexProxyManager
             DialogResult confirm = MessageBox.Show("从列表中移除“" + item.Profile.Name + "”？\n配置文件会保留，避免误删凭据。",
                 "移除代理档案", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (confirm != DialogResult.Yes) return;
-            settings.Profiles.Remove(item.Profile);
-            if (String.Equals(settings.ActiveProfileId, item.Profile.Id, StringComparison.OrdinalIgnoreCase))
-                settings.ActiveProfileId = settings.Profiles[0].Id;
-            SaveSettings();
+            if (!CommitChange(delegate
+            {
+                settings.Profiles.Remove(item.Profile);
+                if (String.Equals(settings.ActiveProfileId, item.Profile.Id, StringComparison.OrdinalIgnoreCase))
+                    settings.ActiveProfileId = settings.Profiles[0].Id;
+            })) return;
             changed = true;
             SetStatus("档案已从列表移除，原文件仍保留在用户目录。", true);
             RefreshProfileList();
@@ -353,7 +358,7 @@ namespace CodexProxyManager
             {
                 string name = profileNameBox.Text.Trim();
                 if (String.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("请填写档案名称。");
-                string id = "profile-" + Guid.NewGuid().ToString("N").Substring(0, 10);
+                string id = "profile-" + Guid.NewGuid().ToString("N");
                 string profileDirectory = Path.Combine(userRoot, "profiles", id);
                 string relativeConfig = Path.Combine("profiles", id, "config.yaml");
                 string configPath = StartupConfiguration.ResolveUserPath(userRoot, relativeConfig);
@@ -378,6 +383,7 @@ namespace CodexProxyManager
                         throw new InvalidOperationException("内容不像分享链接或 Base64 订阅，请检查后重试。");
                     kind = "share-links";
                     string providerDirectory = Path.Combine(userRoot, "core-data", "providers");
+                    if (!PrivacyLog.SafePath(providerDirectory)) throw new InvalidDataException("provider 目录包含链接，未保存分享链接。");
                     Directory.CreateDirectory(providerDirectory);
                     File.WriteAllText(Path.Combine(providerDirectory, id + ".txt"), links + Environment.NewLine,
                         new UTF8Encoding(false));
@@ -418,10 +424,12 @@ namespace CodexProxyManager
                         ? StartupConfiguration.NormalizeControllerUrl(externalControllerBox.Text) : "",
                     NodeControllerSecret = sourceTypeBox.SelectedIndex == 3 ? externalSecretBox.Text : ""
                 };
-                settings.Profiles.Add(profile);
-                settings.ActiveProfileId = id;
-                FollowActiveProfile();
-                SaveSettings();
+                if (!CommitChange(delegate
+                {
+                    settings.Profiles.Add(profile);
+                    settings.ActiveProfileId = id;
+                    FollowActiveProfile();
+                })) return;
                 changed = true;
                 ClearEditor();
                 SetStatus("档案已保存并设为当前。", true);
@@ -440,6 +448,20 @@ namespace CodexProxyManager
             StartupConfiguration.WriteSettings(Path.Combine(userRoot, "settings.json"), settings);
         }
 
+        private bool CommitChange(Action change)
+        {
+            var serializer = new JavaScriptSerializer();
+            ManagerSettings previous = serializer.Deserialize<ManagerSettings>(serializer.Serialize(settings));
+            try { change(); SaveSettings(); return true; }
+            catch
+            {
+                settings = previous;
+                RefreshProfileList();
+                SetStatus("设置保存失败，内存中的档案列表已恢复；请检查目录权限后重试。", false);
+                return false;
+            }
+        }
+
         private void FollowActiveProfile()
         {
             ApplicationConfiguration.Normalize(settings);
@@ -451,8 +473,8 @@ namespace CodexProxyManager
             if (DialogResult != DialogResult.None) return;
             if (settings.Profiles != null && settings.Profiles.Count > 0)
             {
-                SaveSettings();
-                DialogResult = changed ? DialogResult.OK : DialogResult.Cancel;
+                try { SaveSettings(); DialogResult = changed ? DialogResult.OK : DialogResult.Cancel; }
+                catch { e.Cancel = true; SetStatus("设置保存失败，窗口保留供重试。", false); }
             }
             else
             {
@@ -472,23 +494,40 @@ namespace CodexProxyManager
             if (externalPanel.Visible) externalPanel.BringToFront();
         }
 
-        private void TestLocalPort(object sender, EventArgs e)
+        private async void TestLocalPort(object sender, EventArgs e)
         {
+            if (localTestRunning) return;
             string host = localHostBox.Text.Trim();
             int port = Convert.ToInt32(localPortBox.Value);
-            using (TcpClient client = new TcpClient())
+            Button trigger = sender as Button;
+            localTestRunning = true;
+            if (trigger != null) trigger.Enabled = false;
+            SetStatus("正在检查本次填写的上游端口…", true);
+            try
             {
-                try
+                bool reachable = await Task.Run(delegate
                 {
-                    IAsyncResult result = client.BeginConnect(host, port, null, null);
-                    if (!result.AsyncWaitHandle.WaitOne(1800)) throw new TimeoutException("连接超时");
-                    client.EndConnect(result);
-                    SetStatus("本地端口连接成功。", true);
-                }
-                catch (Exception ex)
-                {
-                    SetStatus("本地端口连接失败：" + ex.Message, false);
-                }
+                    using (var client = new TcpClient())
+                    {
+                        try
+                        {
+                            IAsyncResult pending = client.BeginConnect(host, port, null, null);
+                            using (pending.AsyncWaitHandle)
+                            {
+                                if (!pending.AsyncWaitHandle.WaitOne(1800)) return false;
+                                client.EndConnect(pending);
+                                return true;
+                            }
+                        }
+                        catch { return false; }
+                    }
+                });
+                if (!IsDisposed) SetStatus(reachable ? "本次端口连接成功；不代表代理协议或外网可用。" : "本次端口无法连接或超时。", reachable);
+            }
+            finally
+            {
+                localTestRunning = false;
+                if (trigger != null && !trigger.IsDisposed) trigger.Enabled = true;
             }
         }
 

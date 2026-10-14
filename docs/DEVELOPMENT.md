@@ -7,12 +7,18 @@
 - `src/CodexProxyManager/AppInfo.cs`：版本号唯一来源，供窗口、诊断、程序集和构建脚本使用；
 - `src/CodexProxyManager/GettingStartedForm.cs`：只读安装检查和首次使用指引；
 - `src/CodexProxyManager/ControllerProbe.cs`、`tests/CodexProxyManager.Tests/ControllerProbeTests.cs`：外部接口只读检查和异常/响应性测试；
-- `src/CodexProxyManager/CodexProxyManager.cs`：会话管理和 Windows 集成；
+- `src/CodexProxyManager/CodexProxyManager.cs`：入口、Windows 集成、UI/托盘操作与状态编排；
+- `src/CodexProxyManager/ProxySessionService.cs`、`RecoveryWatchdog.cs`：核心/应用启停、恢复、临时会话文件及看门狗；
+- `src/CodexProxyManager/NodeControlService.cs`：独立控制客户端、节点解析/策略、不可变接口绑定及健康计数；
+- `src/CodexProxyManager/DashboardPoller.cs`：与控件无关的单次后台轮询；
+- `tests/CodexProxyManager.Tests/ServiceTests.cs`：可替换接口模拟、双控制通道边界、快照隔离、轮询门闩和会话归属；
 - `src/CodexProxyManager/DashboardForm.cs`、`UiButton.cs`：原生固定导航、节点工作区及统一控件绘制；
 - `src/CodexProxyManager/PrivacyCenterForm.cs`、`PrivacyLog.cs`、`BrowserPrivacyProbe.cs`：独立隐私中心、固定事件日志、限定范围的清理与隔离回环 WebRTC 测试；
 - `src/CodexProxyManager/OpenSourceFoundation.cs`：用户设置、档案解析和配置生成；
 - `src/CodexProxyManager/ProfileManager.cs`：多档案界面、订阅和分享链接 provider 配置；
 - `src/CodexProxyManager/ProcessProxyLauncher.cs`：已安装 Codex 定位、应用专用启动参数和子进程代理环境；
+- `src/CodexProxyManager/RunningApplication.cs`：已有应用的只读参数核对、精确进程身份与配置参数匹配；
+- `tests/CodexProxyManager.Tests/ReviewTests.cs`：控制读写/慢速响应截止时间、大小上限、设置与会话身份、后台刷新响应性及过期结果丢弃；
 - `src/CodexProxyManager/PrivacyProtection.cs`、`tests/CodexProxyManager.Tests/PrivacyTests.cs`：按应用生成隐私限制请求；真实子进程参数、设置迁移、UI 保存/模式切换和诊断边界测试；
 - `src/CodexProxyManager/ApplicationConfiguration.cs`：应用列表迁移、档案绑定、进程检测和会话规则生成；
 - `src/CodexProxyManager/ApplicationManagerForm.cs`：应用管理界面；
@@ -42,11 +48,15 @@
 
 默认输出 `app/CodexProxyManager.exe`，同时准备帮助文档与手动恢复工具，不启动应用。管理器正在运行时，Windows 会锁定主程序。可以输出到隔离目录进行验证：
 
+输出禁止进入源码、Git 元数据和工作流目录，也拒绝链接父目录及备用数据流文件名。运行库由使用者单独准备，不会在构建或打包中自动下载。
+
 ```powershell
 & '.\scripts\build.ps1' -OutputDirectory '.\artifacts\test-build'
 ```
 
 运行 `& '.\scripts\test.ps1'` 验证两种模式的真实子进程参数与环境继承、旧设置迁移与应用档案绑定、删除档案后的回退、Mihomo 启停和异常清理。新增应用流量测试会运行真实 Mihomo，把测试程序请求送到隔离的本地上游，验证命中分流规则且不修改原始档案。测试使用独立临时目录与端口，并检查 Windows Internet Settings 在前后保持一致。
+
+v0.11.3 的核心集成直接调用会话服务，不再伪造 ManagerContext 私有进程字段；运行中的模拟应用通过完整 Start/Stop 路径恢复两轮。隐含 UI 编排仍由隐藏原生窗口测试覆盖。真实 Store/游戏验收步骤见 [共存测试](COEXISTENCE_TEST.md)，不能以模拟测试代填。
 
 `& '.\scripts\test.ps1' -BrowserExecutable '<已安装 Chrome 或 Edge 的 EXE 绝对路径>'` 单独运行隔离本地 WebRTC 行为回归，不启动正常管理会话，不使用私人节点；默认单元/完整回归不自动启动浏览器。该检查需要应用支持新无头模式和本机临时调试接口，没有有效基线时不会认定通过。
 
