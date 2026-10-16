@@ -196,6 +196,15 @@ not encryption or protection against an attacker running as the same user.
 
 ## Planned backend adapters
 
+v1.1.0 local YAML import uses ImportedTopology (YamlDotNet representation model,
+bounded parse/alias expansion, closed references including dialer-proxy). Only
+nodes/groups cross into manager-owned config; validation runs the core in test
+mode with no listeners or health checks. URI/Base64 retains the isolated provider
+path. StrategyGraph resolves nested selectors for manager failover; automatic
+groups stay core-owned. The strategy window changes explicit selector members,
+never rewrites the import graph or mutates system settings. DLL inputs are pinned
+by SHA-256 in both build and publication safety checks.
+
 Since v0.11.3 lifecycle, node policy and polling have separate service boundaries,
 and unit tests inject IControllerClient fixtures rather than reflecting into
 ManagerContext's process fields. This prepares for adapters but does not implement

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Rinko
 # SPDX-License-Identifier: GPL-3.0-only
+param([switch]$KeepArtifacts)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-safety.ps1')
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('CodexProxySafetyTest-' + [guid]::NewGuid().ToString('N'))
@@ -9,6 +10,15 @@ try {
     $fixture = Join-Path $scratch 'fixture.txt'
     [IO.File]::WriteAllText($fixture, "Safe text`nhttp://127.0.0.1:1080`nhttps://example.com/docs")
     Assert-ReleaseSafety -Root $scratch -RelativePaths @('fixture.txt')
+    $dependency = Join-Path $scratch 'YamlDotNet.dll'
+    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'third_party/YamlDotNet/YamlDotNet.dll') -Destination $dependency
+    Assert-ReleaseSafety -Root $scratch -RelativePaths @('YamlDotNet.dll')
+    Copy-Item -LiteralPath $dependency -Destination (Join-Path $scratch 'other.dll')
+    $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('other.dll'))
+    Check ($finding.Count -eq 1 -and $finding[0].Rule -eq 'unsupported-file-type') 'Unexpected DLL name accepted'
+    [IO.File]::WriteAllBytes($dependency, [byte[]]@(65,66,67))
+    $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('YamlDotNet.dll'))
+    Check ($finding.Count -eq 1 -and $finding[0].Rule -eq 'dependency-hash') 'Modified dependency accepted'
     # Synthetic fixtures are assembled so this test's own source has no apparent credential.
     $samples = @(
         @('private-key', ('-----BEGIN ' + 'OPENSSH PRIVATE KEY-----')),
@@ -48,7 +58,7 @@ try {
     try {
         $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('linked/safe.txt'))
         Check ($finding[0].Rule -eq 'linked-input') 'Linked parent accepted'
-    } finally { [IO.Directory]::Delete($link) }
+    } finally { if (-not $KeepArtifacts) { [IO.Directory]::Delete($link) } }
     # Verify Git enumeration: Unicode paths survive -z, ignored local data stays
     # outside the candidate set, but force-tracked private data must fail closed.
     $gitFixture = Join-Path $scratch 'git-fixture'
@@ -82,6 +92,7 @@ try {
 finally {
     $resolved = [IO.Path]::GetFullPath($scratch)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-    if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+    if ($KeepArtifacts) { Write-Output ('Retained safety fixtures: ' + $resolved) }
+    elseif ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
         [IO.Path]::GetFileName($resolved).StartsWith('CodexProxySafetyTest-')) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }

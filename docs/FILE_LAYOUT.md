@@ -9,6 +9,7 @@ v0.10.3 把源码仓库、日常应用和历史产物分开；它仍是免安装
 ├── Codex Proxy Manager.lnk      日常启动快捷方式（仅本机）
 ├── app/                        可直接使用的应用（不提交 Git）
 │   ├── CodexProxyManager.exe    固定文件名，版本在程序内查看
+│   ├── YamlDotNet.dll           v1.1.0 起随程序提供的解析库
 │   ├── runtime/                核心及规则库（本机自行准备）
 │   ├── docs/                   随应用提供的文档
 │   └── tools/                  手动恢复工具
@@ -19,6 +20,7 @@ v0.10.3 把源码仓库、日常应用和历史产物分开；它仍是免安装
 ├── examples/                   无私人凭据的示例
 ├── resources/                  打包专用说明资源
 ├── tools/                      手动维护工具源码
+├── third_party/YamlDotNet/      固定解析库、MIT 许可和来源／哈希
 ├── artifacts/                  发布包及可恢复历史归档（不提交 Git）
 ├── .github/                    持续集成
 ├── README.md                   项目入口
@@ -33,6 +35,8 @@ v0.10.3 把源码仓库、日常应用和历史产物分开；它仍是免安装
 
 ```text
 CodexProxyManager.exe
+YamlDotNet.dll
+third_party/YamlDotNet/LICENSE.txt
 README.md
 LICENSE
 docs/

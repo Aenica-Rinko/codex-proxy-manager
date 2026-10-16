@@ -38,6 +38,13 @@ function Get-ReleaseSafetyFindings {
                     $leaf = [IO.Path]::GetFileName($path)
                     $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
                     $file = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+                    if ($normalized -match '^(?:source/)?third_party/YamlDotNet/YamlDotNet\.dll$' -or $normalized -eq 'YamlDotNet.dll') {
+                        if ($file.PSIsContainer -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne
+                            '9172f0758ed76963e0ede3b5ca9a1fb5b82f64c7e7a92cb3a6de39efa933a668') {
+                            [pscustomobject]@{ FileIndex = $fileIndex; Line = 0; Rule = 'dependency-hash' }
+                        }
+                        continue
+                    }
                     if ($normalized -match '(?i)(^|/)(\.git|app|artifacts|profiles|runtime|dist|logs|core-data)(/|$)' -or
                         $leaf -match '(?i)^(settings|node-preferences|manager-state|proxy-state)\.json$' -or
                         $leaf -match '(?i)^\.env(?:\.|$)') { $rule = 'private-or-runtime-input' }

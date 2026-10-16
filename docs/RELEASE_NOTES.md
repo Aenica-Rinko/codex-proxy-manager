@@ -1,4 +1,16 @@
-# v1.0.0
+# v1.1.0 · 节点与策略组保留
+
+2026-10-16：本地导入保留节点、原策略组及组间引用，增加“策略组与引用”窗口。支持 select、fallback、url-test、load-balance，新增有界 YAML 解析、锚点合并、重复／缺失／循环引用检查。外部 provider 依赖明确拒绝，系统级配置不继承。
+
+管理器故障切换沿 select 引用链操作，连续三次失败后选用可用备用线路，尝试后冷却 120 秒；不自动直连，不干预核心自动组。修复档案／应用保存失败回滚、选项变更未应用、核心停止失败状态丢失等问题；收紧手动恢复工具的进程归属检查。
+
+新增固定版本 YamlDotNet 16.3.0（MIT，哈希校验）；EXE 必须与 DLL 一起使用，要求 .NET Framework 4.7.2+。升级不会自动重写私人档案，旧 YAML 档案需要重新导入才能保留原策略组。详见 [使用说明](STRATEGY_GROUPS.md) 与 [审查记录](REVIEW.md)。
+
+下载 [v1.1.0 发布附件](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v1.1.0) 中的 `CodexProxyManager-v1.1.0-manager-only.zip` 和 `.zip.sha256`。完整包包含 EXE、DLL、文档、对应源码和许可证，不包含 Mihomo、规则库、节点、订阅或账号；不是一键安装器。升级前退出管理器，备份用户数据，保留原 runtime；不要只替换 EXE。v1.0.0 继续保留供回退。
+
+**运行中恢复的前提不变：首次必须从管理器启动兼容应用，保持应用运行，停止代理后才能再次恢复；普通方式启动的应用不能中途接管。** 自动故障切换不保证已有长连接无缝迁移。商店／游戏变慢仍未定位，干净 Windows、多 DPI 和真实共存测试尚未完成，隐私选项不构成零泄漏保证。
+
+# v1.0.0（历史公开版本）
 
 作者：Rinko · GPL-3.0-only · Windows x64 · [发布页](https://github.com/Aenica-Rinko/codex-proxy-manager/releases/tag/v1.0.0)。维护者决定将当前功能版本编号为 v1.0.0，不代表未完成的独立 Windows/DPI/共存验收已通过，也不保证全面兼容、访问成功或零泄漏。
 

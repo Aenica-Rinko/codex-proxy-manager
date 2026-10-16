@@ -18,6 +18,7 @@ namespace CodexProxyManager
         internal event EventHandler ProfilesRequested;
         internal event EventHandler ApplicationsRequested;
         internal event EventHandler DiagnosticsRequested;
+        internal event EventHandler GroupsRequested;
         internal event EventHandler PrivacyRequested;
         internal event EventHandler ScreenshotPrivacyChanged;
         internal event EventHandler ExitRequested;
@@ -106,6 +107,9 @@ namespace CodexProxyManager
             rail.Controls.Add(applicationsButton, 0, 4);
             rail.Controls.Add(profilesButton, 0, 5);
             rail.Controls.Add(diagnosticsButton, 0, 6);
+            var groupsButton = NavButton("策略组与引用");
+            rail.Controls.Add(groupsButton, 0, 7);
+            groupsButton.Click += delegate { if (GroupsRequested != null) GroupsRequested(this, EventArgs.Empty); };
             var guide = NavButton("帮助与版本");
             guideButton = guide;
             var exit = NavButton("退出管理器");
@@ -169,7 +173,7 @@ namespace CodexProxyManager
             nodes.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             nodes.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
             main.Controls.Add(nodes, 0, 2);
-            nodes.Controls.Add(new Label { Text = "节点列表   ·   选择节点后切换；测速不代表最大带宽",
+            nodes.Controls.Add(new Label { Text = "入口成员   ·   节点与策略组；测速不代表最大带宽",
                 Dock = DockStyle.Fill, Font = new Font(Font.FontFamily, 11F, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
             var filters = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1 };
@@ -474,7 +478,7 @@ namespace CodexProxyManager
                 if (String.Equals(selected, node.Name, StringComparison.Ordinal)) item.Selected = true;
             }
             nodeList.EndUpdate();
-            nodeCount.Text = "显示 " + visible.Count + " / " + catalog.Count + " 个节点" +
+            nodeCount.Text = "显示 " + visible.Count + " / " + catalog.Count + " 个入口成员（" + catalog.Count(n => !StrategyGraph.IsGroup(n.Type)) + " 节点、" + catalog.Count(n => StrategyGraph.IsGroup(n.Type)) + " 策略组）" +
                 (visible.Count == 0 && catalog.Count > 0 ? " · 没有匹配项，可清除筛选" : "") +
                 (!String.IsNullOrEmpty(catalogCurrent) && !visible.Any(n => n.Name == catalogCurrent) ? "\r\n当前节点不在列表中；筛选不会改变连接。" : "");
             UpdateButtons();

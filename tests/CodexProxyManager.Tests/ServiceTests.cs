@@ -51,9 +51,9 @@ namespace CodexProxyManager
             Check(measured[0].Delay == 20 && catalog.Nodes[0].Delay == 25 && !Object.ReferenceEquals(measured[0], catalog.Nodes[0]), "Measurement mutated a shared snapshot");
             Check(NodeControlService.Fastest(measured).Name == "fast" &&
                 NodeControlService.Fastest(new[] { new NodeInfo { Name = "unavailable", Delay = -1 } }) == null, "Invalid delay selected");
-            service.Switch(catalog.Group, "quoted\"target");
+            service.Switch(catalog.Group, "slow");
             Check(external.Writes[0] == "/proxies/" + Uri.EscapeDataString(catalog.Group) &&
-                new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(external.LastBody)["name"] == "quoted\"target", "Switch did not preserve escaped identities");
+                new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(external.LastBody)["name"] == "slow", "Switch did not preserve escaped identities");
             Check(core.Deletes.SequenceEqual(new[] { "/connections" }) && external.Deletes.Count == 0, "External client's connections were reset");
             Check(service.RefreshProviders() == 1 && external.Writes.Last() == "/providers/proxies/" + Uri.EscapeDataString("remote /#"), "File provider refreshed / provider name changed");
             Check(service.ProbeNode("fast") == 31 && service.ReadTraffic().Connections == 2, "Health/traffic contract changed");

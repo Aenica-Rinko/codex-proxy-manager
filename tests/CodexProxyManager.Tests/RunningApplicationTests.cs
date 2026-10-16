@@ -16,7 +16,7 @@ namespace CodexProxyManager
 
         internal static void Run(string scratch)
         {
-            string fixture = Path.Combine(scratch, "RunningFixture.exe");
+            string fixture = FixturePath(scratch);
             File.Copy(Assembly.GetExecutingAssembly().Location, fixture);
             var app = new ManagedApplication { Id = "fixture", Executable = fixture, LaunchMode = "chromium" };
             string line = "\"" + fixture + "\" " + ProcessProxyLauncher.BuildStartInfo(fixture, 27899, app).Arguments;
@@ -71,5 +71,7 @@ namespace CodexProxyManager
             }
             Console.WriteLine("PASS resume launch evidence: flags, privacy, ambiguous launches, live fixture PID unchanged");
         }
+        internal static string FixturePath(string scratch)
+        { return Path.Combine(scratch, "RunningFixture-" + Path.GetFileName(scratch) + ".exe"); }
     }
 }

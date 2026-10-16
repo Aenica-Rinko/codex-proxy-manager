@@ -68,8 +68,9 @@ namespace CodexProxyManager
             {
                 try
                 {
-                    using (Process process = Process.GetProcessById(Program.ReadState(statePath).CorePid))
-                        alive = !process.HasExited && String.Equals(process.MainModule.FileName, corePath, StringComparison.OrdinalIgnoreCase);
+                    ProxyState state = Program.ReadState(statePath);
+                    using (Process process = Process.GetProcessById(state.CorePid))
+                        alive = ProcessIdentity.Matches(process, corePath, state.CoreStartUtcTicks);
                 }
                 catch { }
             }

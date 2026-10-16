@@ -1,23 +1,24 @@
 # Codex Proxy Manager
 
-Windows 应用专用代理管理器 · v1.0.0 · Rinko · GPL-3.0-only。
+Windows 应用专用代理管理器 · v1.1.0 · Rinko · GPL-3.0-only。
 
 双击本目录的 **CodexProxyManager.exe** 打开管理面板。打开面板不会自动启动代理或目标应用；只有主动点击“启动 / 恢复”才开启会话，未运行时启动应用，匹配参数运行时仅恢复代理。
 
 ## 第一次使用
 
-1. 完整解压，不要在 ZIP 中直接运行。
+1. 完整解压，保留 EXE 旁的 `YamlDotNet.dll`；需要 .NET Framework 4.7.2 或更高版本，不要在 ZIP 中直接运行。
 2. 按 [快速入门](docs/QUICKSTART.md) 自行准备 `runtime/mihomo.exe`、`runtime/data/GeoSite.dat` 和 `runtime/data/geoip.metadb`。
 3. 在管理器中导入自己的代理来源；本包不提供节点、订阅、账号或代理核心。
 4. 首次使用先保存工作并完全退出普通方式打开的目标应用，再点击“启动 / 恢复”。
 
-本地文件入口：代理档案 → 节点来源 → 本地文件导入 → 选择 YAML/YML/TXT → 添加并设为当前。复制文件中的节点，不采用源文件的 TUN、DNS、监听端口和全局规则。仅远程 provider 引用或其他客户端 JSON 不支持；原文件不修改，修改后需重新导入。只导入可信文件，导入不是节点安全认证。
+本地文件入口：代理档案 → 节点来源 → 本地文件导入 → 选择 YAML/YML/TXT → 添加并设为当前。保留内联节点、策略组及引用，不采用源文件的 TUN、DNS、监听端口和全局规则。依赖远程／外部文件 provider 的组需要先展开；其他客户端 JSON 不支持。原文件不修改，旧档案需重新导入才能采用新功能。详见 [策略组与故障切换](docs/STRATEGY_GROUPS.md)。
 
 **恢复代理必须先从本管理器启动应用。之后应用保持运行，停止代理后再点“启动 / 恢复”，才可免重启恢复。** 仅支持相同入口/隐私参数的兼容 Chromium/Electron 应用；普通方式打开的应用不能中途接管，环境变量模式、参数变更或检查失败仍需完全退出后从管理器启动。停止代理不关闭应用，也不自动直连。详见 [使用手册](docs/USER_GUIDE.md)。
 
 ## 目录说明
 
 - `CodexProxyManager.exe`：唯一启动入口，版本更新不再更改文件名。
+- `YamlDotNet.dll`：随包提供的固定版本 YAML 解析库；许可证位于 `third_party/YamlDotNet/LICENSE.txt`。
 - `runtime/`：用户自行准备的核心和规则文件。
 - `docs/`：使用、隐私、升级及技术文档。
 - `tools/`：需要时手动使用的网络恢复工具，不会自动执行。

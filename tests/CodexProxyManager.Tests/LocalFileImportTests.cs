@@ -94,6 +94,7 @@ namespace CodexProxyManager
             using (var imported = LocalFileImport.Prepare(user, source, 27890, delegate(string text) { return LocalFileImport.ValidateWithCore(projectRoot, user, text); }))
                 Check(imported.NodeCount == 1, "real core ignored valid inline node");
             string uri = "socks5://127.0.0.1:9#fixture-local\n";
+            Check(LocalFileImport.ValidateWithCore(projectRoot, user, StrategyTests.Nodes + StrategyTests.Groups) == 2, "core rejected retained strategy graph");
             Check(LocalFileImport.ValidateWithCore(projectRoot, user, uri) == 1, "URI parser failed");
             Check(LocalFileImport.ValidateWithCore(projectRoot, user, Convert.ToBase64String(Encoding.UTF8.GetBytes(uri))) == 1, "Base64 parser failed");
             Rejected(delegate { LocalFileImport.ValidateWithCore(projectRoot, user, "proxy-providers: {only: {type: http, url: 'https://invalid.example.test/not-called'}}\n"); }, "remote-only YAML accepted");

@@ -68,6 +68,10 @@ v0.11.3 的核心集成直接调用会话服务，不再伪造 ManagerContext �
 
 ## 发行打包
 
+v1.1.0 使用仓库内固定版本的 `third_party/YamlDotNet/YamlDotNet.dll`，构建和发布前核对 SHA-256；需要 .NET Framework 4.7.2+。MIT 许可证与上游来源一并打包。源码白名单仍拒绝任意其他二进制。导入图及故障切换的单元／真实核心测试位于 StrategyTests.cs。
+
+如需逐文件审核清理，可在 test.ps1、test-package.ps1、package.ps1 加 `-KeepArtifacts`，保留暂存目录，避免脚本自动递归清理。命令会打印保留位置；这些合成测试产物不需要发布。
+
 ```powershell
 & '.\scripts\test-release-safety.ps1'
 & '.\scripts\audit-release.ps1' # 源码仓库中执行，需要 Git
@@ -77,7 +81,7 @@ v0.11.3 的核心集成直接调用会话服务，不再伪造 ManagerContext �
 & '.\scripts\package.ps1'
 ```
 
-打包会从暂存的对应源码重新编译，并在 `artifacts/releases` 生成 ZIP 和 `.sha256`。v1.0.0 起包名为 `CodexProxyManager-v<版本>-manager-only.zip`，manifest channel 为 `manager-only`；0.x 构建保留 `manager-only-preview` 命名。用户包根目录只放固定 EXE、README、LICENSE、docs、tools、source 和 manifest.json；完整对应源码收纳在 source 内，保留可独立构建和测试的开发结构。不复制用户目录、核心、规则库、快捷方式或旧 EXE。已有同名包拒绝覆盖，使用 `-OutputDirectory` 可另选输出目录。
+打包从暂存的对应源码重新编译，在 `artifacts/releases` 生成 ZIP 和 `.sha256`。v1.0.0 起使用 `CodexProxyManager-v<版本>-manager-only.zip`。v1.1.0 用户包根目录含固定 EXE、YamlDotNet.dll、README、LICENSE、docs、tools、third_party、source 和 manifest.json；对应源码在 source 内，可独立构建和测试。不复制用户数据、核心、规则库、快捷方式或旧 EXE。已有同名包拒绝覆盖，可用 `-OutputDirectory` 另选输出目录。
 
 版本统一修改 `src/CodexProxyManager/AppInfo.cs`；程序集、窗口和 ZIP 版本更新，EXE 文件名固定为 CodexProxyManager.exe。目录迁移与可恢复归档见 [FILE_LAYOUT.md](FILE_LAYOUT.md)。文件哈希用于核对字节，不是发布者签名，名单也不能替代内容审计。
 

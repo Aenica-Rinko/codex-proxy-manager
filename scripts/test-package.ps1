@@ -1,3 +1,4 @@
+param([switch]$KeepArtifacts)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'build-common.ps1')
 $root = Split-Path -Parent $PSScriptRoot
@@ -18,7 +19,7 @@ try {
         New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
         [IO.File]::WriteAllText($path, 'PRIVATE_CANARY_NOT_FOR_RELEASE')
     }
-    & (Join-Path $fixture 'scripts\package.ps1') | Out-Null
+    & (Join-Path $fixture 'scripts\package.ps1') -KeepArtifacts:$KeepArtifacts | Out-Null
     $archivePath = Join-Path $fixture ('artifacts\releases\' + (Get-ManagerPackageName) + '.zip')
     $hashLine = [IO.File]::ReadAllText($archivePath + '.sha256').Split(' ')[0]
     if ($hashLine -ne (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'ZIP hash mismatch' }
@@ -34,7 +35,7 @@ try {
         if ($manifest.license -ne 'GPL-3.0-only' -or $manifest.author -ne 'Rinko' -or
             $manifest.includesCorrespondingSource -ne $true -or $manifest.sourceDirectory -ne 'source') { throw 'Invalid license/source metadata' }
         $topLevel = @($entryNames | ForEach-Object { $_.Split('/')[0] } | Sort-Object -Unique)
-        if (@(Compare-Object @('CodexProxyManager.exe','LICENSE','README.md','docs','manifest.json','source','tools') $topLevel).Count) { throw 'Portable root is cluttered or incomplete' }
+        if (@(Compare-Object @('CodexProxyManager.exe','YamlDotNet.dll','third_party','LICENSE','README.md','docs','manifest.json','source','tools') $topLevel).Count) { throw 'Portable root is cluttered or incomplete' }
         $reader = New-Object IO.StreamReader($archive.GetEntry('LICENSE').Open())
         try { $licenseText = $reader.ReadToEnd() } finally { $reader.Dispose() }
         if ($licenseText -ne [IO.File]::ReadAllText((Join-Path $root 'LICENSE')) -or
@@ -58,7 +59,7 @@ try {
     $rebuilt = Join-Path $scratch 'rebuilt'
     New-Item -ItemType Directory -Path $rebuilt | Out-Null
     & (Join-Path $extracted 'source\scripts\build.ps1') -OutputDirectory $rebuilt | Out-Null
-    & (Join-Path $extracted 'source\scripts\test.ps1') -UnitOnly | Out-Null
+    & (Join-Path $extracted 'source\scripts\test.ps1') -UnitOnly -KeepArtifacts:$KeepArtifacts | Out-Null
     $exeName = 'CodexProxyManager.exe'
     foreach ($directory in @($extracted, $rebuilt)) {
         $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $directory $exeName))
@@ -79,14 +80,14 @@ try {
     if (-not $blocked) { throw 'Alternate stream output name accepted' }
     $before = (Get-FileHash -LiteralPath $archivePath).Hash
     $rejected = $false
-    try { & (Join-Path $fixture 'scripts\package.ps1') | Out-Null } catch { $rejected = $true }
+    try { & (Join-Path $fixture 'scripts\package.ps1') -KeepArtifacts:$KeepArtifacts | Out-Null } catch { $rejected = $true }
     if (-not $rejected -or (Get-FileHash -LiteralPath $archivePath).Hash -ne $before) { throw 'Existing package overwritten' }
     # A credential accidentally placed in an allowed document must block output.
     $syntheticKey = 'gh' + 'p_' + ('Z' * 36)
     [IO.File]::AppendAllText((Join-Path $fixture 'README.md'), ("`n" + $syntheticKey))
     $blockedOutput = Join-Path $scratch 'blocked-output'
     $message = ''
-    try { & (Join-Path $fixture 'scripts\package.ps1') -OutputDirectory $blockedOutput | Out-Null }
+    try { & (Join-Path $fixture 'scripts\package.ps1') -OutputDirectory $blockedOutput -KeepArtifacts:$KeepArtifacts | Out-Null }
     catch { $message = $_.Exception.Message }
     if (-not $message.Contains('Release safety check failed') -or $message.Contains($syntheticKey)) { throw 'Credential did not block packaging safely' }
     if (@(Get-ChildItem -LiteralPath $blockedOutput -File).Count -ne 0) { throw 'Rejected package left a release artifact' }
@@ -95,6 +96,7 @@ try {
 finally {
     $resolved = [IO.Path]::GetFullPath($scratch)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-    if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+    if ($KeepArtifacts) { Write-Output ('Retained package test: ' + $resolved) }
+    elseif ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
         [IO.Path]::GetFileName($resolved).StartsWith('CodexProxyPackageTest-')) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }

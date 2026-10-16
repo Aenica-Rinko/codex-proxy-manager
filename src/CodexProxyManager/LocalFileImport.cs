@@ -17,6 +17,8 @@ namespace CodexProxyManager
     {
         internal string Id, RelativeConfig, ConfigPath, ProviderPath, ProfileDirectory;
         internal int NodeCount;
+        internal int GroupCount;
+        internal string EntryGroup;
         internal bool ConfigCreated, ProviderCreated, ProfileDirectoryCreated, Committed;
         public void Dispose()
         {
@@ -73,9 +75,13 @@ namespace CodexProxyManager
             string snapshot = ReadSnapshot(source);
             if (mixedPort < 1024 || mixedPort > 65535) throw new ArgumentOutOfRangeException("mixedPort");
             if (validate == null) throw new ArgumentNullException("validate");
+            var topology = ImportedTopology.Parse(snapshot);
             int count = validate(snapshot);
             if (count <= 0) throw new InvalidDataException("文件中没有可用节点；请选择含内联 proxies 的 Clash/Mihomo YAML、分享链接或 Base64 文本。仅有远程 provider 引用的档案暂不支持。");
-            var result = new ImportedLocalProfile { Id = "profile-" + Guid.NewGuid().ToString("N"), NodeCount = count };
+            if (topology != null && count != topology.Nodes.Children.Count)
+                throw new InvalidDataException("核心识别的节点数量与档案不一致，已停止导入，避免遗漏节点。");
+            var result = new ImportedLocalProfile { Id = "profile-" + Guid.NewGuid().ToString("N"), NodeCount = count,
+                GroupCount = topology == null ? 0 : topology.GroupCount, EntryGroup = topology == null ? "Codex Proxy" : topology.Entry };
             result.RelativeConfig = Path.Combine("profiles", result.Id, "config.yaml");
             result.ConfigPath = StartupConfiguration.ResolveUserPath(userRoot, result.RelativeConfig);
             result.ProfileDirectory = Path.GetDirectoryName(result.ConfigPath);
@@ -88,13 +94,14 @@ namespace CodexProxyManager
                 Directory.CreateDirectory(Path.GetDirectoryName(result.ProviderPath));
                 if (!PrivacyLog.SafePath(result.ConfigPath) || !PrivacyLog.SafePath(result.ProviderPath)) throw new IOException();
                 CreateFile(result.ProviderPath, snapshot, delegate { result.ProviderCreated = true; });
-                CreateFile(result.ConfigPath, ProviderConfigFactory.BuildFileProvider(result.Id, mixedPort), delegate { result.ConfigCreated = true; });
+                CreateFile(result.ConfigPath, topology == null ? ProviderConfigFactory.BuildFileProvider(result.Id, mixedPort) :
+                    topology.BuildConfig(mixedPort, false), delegate { result.ConfigCreated = true; });
                 return result;
             }
             catch { result.Dispose(); throw new IOException("本地档案保存失败，请检查用户数据目录权限；原文件和已有档案未修改。"); }
         }
 
-        private static void CreateFile(string path, string text, Action created)
+        internal static void CreateFile(string path, string text, Action created)
         {
             using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
@@ -108,6 +115,7 @@ namespace CodexProxyManager
         // remote providers or inherited CLASH_* hooks. Never run the source as a config.
         internal static int ValidateWithCore(string projectRoot, string userRoot, string snapshot)
         {
+            var topology = ImportedTopology.Parse(snapshot);
             string executable = Path.Combine(projectRoot, "runtime", "mihomo.exe");
             if (!File.Exists(executable) || !PrivacyLog.SafePath(executable))
                 throw new InvalidDataException("本地导入校验需要 runtime/mihomo.exe，请先准备可信的 Mihomo 核心。");
@@ -129,8 +137,9 @@ namespace CodexProxyManager
                     "\nproxy-providers:\n  import-check:\n    type: file\n    path: ./nodes.txt\n    health-check:\n      enable: false\n" +
                     "proxy-groups:\n  - name: import-selection\n    type: select\n    use: [import-check]\n    proxies: [DIRECT]\nrules: ['MATCH,DIRECT']\n";
                 string config = Path.Combine(scratch, "check.yaml");
+                if (topology != null) yaml = topology.BuildConfig(0, true);
                 File.WriteAllText(config, yaml, new UTF8Encoding(false));
-                var info = new ProcessStartInfo(executable, "-d \"" + scratch + "\" -f \"" + config + "\"")
+                var info = new ProcessStartInfo(executable, (topology == null ? "" : "-t ") + "-d \"" + scratch + "\" -f \"" + config + "\"")
                 {
                     UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
                     WorkingDirectory = scratch, RedirectStandardOutput = true, RedirectStandardError = true
@@ -146,7 +155,12 @@ namespace CodexProxyManager
                 var controller = new ControllerClient("http://127.0.0.1:" + port, secret);
                 while (timer.ElapsedMilliseconds < 10000)
                 {
-                    if (core.HasExited) break;
+                    if (core.HasExited)
+                    {
+                        if (topology != null && core.ExitCode == 0) return topology.Nodes.Children.Count;
+                        break;
+                    }
+                    if (topology != null) { Thread.Sleep(100); continue; }
                     try
                     {
                         var data = controller.Read("/providers/proxies/import-check");

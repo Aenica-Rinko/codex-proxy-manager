@@ -208,6 +208,8 @@ namespace CodexProxyManager
             {
                 string source = Path.Combine(sourceRoot, name);
                 string target = Path.Combine(targetRoot, name);
+                if (!PrivacyLog.SafePath(source) || !PrivacyLog.SafePath(target))
+                    throw new InvalidDataException("规则库路径包含链接，未复制文件。");
                 if (!File.Exists(source)) continue;
                 if (!File.Exists(target) || File.GetLastWriteTimeUtc(source) > File.GetLastWriteTimeUtc(target))
                     File.Copy(source, target, true);

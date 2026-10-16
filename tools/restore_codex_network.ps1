@@ -1,3 +1,4 @@
+param([switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -45,16 +46,34 @@ namespace CodexProxyRestore {
 }
 
 try {
+    # A live manager owns its session; recovery must not race its watchdog/lifecycle.
+    $managerPaths = @((Join-Path $projectRoot 'CodexProxyManager.exe'), (Join-Path $projectRoot 'app\CodexProxyManager.exe'))
+    $liveManagers = @(Get-CimInstance Win32_Process -Filter "Name='CodexProxyManager.exe'" -ErrorAction Stop |
+        Where-Object { -not $_.ExecutablePath -or $_.ExecutablePath -in $managerPaths })
+    if ($CheckOnly) {
+        [pscustomobject]@{ LiveManagerDetected = ($liveManagers.Count -gt 0); StateExists = (Test-Path -LiteralPath $userStateFile); Changed = $false }
+        return
+    }
+    if ($liveManagers.Count) { throw 'Exit the manager through its tray menu before recovery.' }
     $current = Get-ItemProperty -LiteralPath $internetSettings
     $stateFile = @($userStateFile, $managerStateFile, $legacyStateFile) |
         Where-Object { Test-Path -LiteralPath $_ } |
         Select-Object -First 1
-    if ($stateFile -and ((Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json).NetworkMode -eq 'process')) {
-        Remove-Item -LiteralPath $stateFile -Force
-        $message = 'Process-only session cleared. Windows proxy settings were left unchanged.'
+    $saved = $null
+    if ($stateFile) {
+        $stateItem = Get-Item -LiteralPath $stateFile -ErrorAction Stop
+        if ($stateItem.PSIsContainer -or $stateItem.Length -gt 65536) { throw 'Invalid state file.' }
+        $cursor = $stateItem.FullName
+        while ($cursor) {
+            if ((Get-Item -LiteralPath $cursor -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked state path.' }
+            $cursor = Split-Path -Parent $cursor
+        }
+        $saved = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
+    }
+    if ($stateFile -and $saved.NetworkMode -eq 'process') {
+        $message = 'Process-only state found. Windows proxy settings were left unchanged; session state retained for verified manager cleanup.'
     }
     elseif ($stateFile -and [int]$current.ProxyEnable -eq 1 -and [string]$current.ProxyServer -eq $managedProxy) {
-        $saved = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
         Set-ItemProperty -LiteralPath $internetSettings -Name ProxyEnable -Type DWord -Value ([int]$saved.ProxyEnable)
         if ([bool]$saved.HasProxyServer) {
             Set-ItemProperty -LiteralPath $internetSettings -Name ProxyServer -Value ([string]$saved.ProxyServer)
@@ -68,8 +87,7 @@ try {
         else {
             Remove-ItemProperty -LiteralPath $internetSettings -Name AutoConfigURL -ErrorAction SilentlyContinue
         }
-        Remove-Item -LiteralPath $stateFile -Force
-        $message = 'The saved Windows proxy setting was restored.'
+        $message = 'The saved Windows proxy setting was restored. State retained for verified manager cleanup.'
     }
     elseif ([int]$current.ProxyEnable -eq 1 -and [string]$current.ProxyServer -eq $managedProxy) {
         Set-ItemProperty -LiteralPath $internetSettings -Name ProxyEnable -Type DWord -Value 0
@@ -86,7 +104,8 @@ try {
         (Join-Path $projectRoot 'app\runtime\mihomo.exe'))
     $projectCores = Get-CimInstance Win32_Process -Filter "Name='mihomo.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
-            $_.ExecutablePath -and $_.ExecutablePath -in $projectCorePaths
+            $saved -and $_.ExecutablePath -and $_.ExecutablePath -in $projectCorePaths -and
+            $_.ExecutablePath -eq $saved.CoreExecutablePath -and $_.ProcessId -eq [int]$saved.CorePid
         }
     foreach ($process in $projectCores) {
         $candidate = $null
@@ -94,8 +113,9 @@ try {
             $candidate = Get-Process -Id $process.ProcessId -ErrorAction Stop
             # Recheck identity instead of trusting a possibly reused CIM PID.
             if ($candidate.Path -eq $process.ExecutablePath -and
+                $candidate.StartTime.ToUniversalTime().Ticks -eq [long]$saved.CoreStartUtcTicks -and
                 [Math]::Abs(($candidate.StartTime.ToUniversalTime() - $process.CreationDate.ToUniversalTime()).Ticks) -lt 10) {
-                Stop-Process -InputObject $candidate -Force -ErrorAction Stop
+                Stop-Process -InputObject $candidate -ErrorAction Stop
                 $message += ' The project Mihomo process was stopped.'
             }
         }

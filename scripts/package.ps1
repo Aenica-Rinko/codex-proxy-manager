@@ -1,4 +1,4 @@
-param([string]$OutputDirectory)
+param([string]$OutputDirectory, [switch]$KeepArtifacts)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'build-common.ps1')
 . (Join-Path $PSScriptRoot 'release-safety.ps1')
@@ -50,6 +50,7 @@ try {
 finally {
     $resolved = [IO.Path]::GetFullPath($scratch)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-    if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+    if ($KeepArtifacts) { Write-Output ('Retained package staging: ' + $resolved) }
+    elseif ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
         [IO.Path]::GetFileName($resolved).StartsWith('CodexProxyPackage-')) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }

@@ -7,7 +7,7 @@ namespace CodexProxyManager
 {
     internal sealed class ApplicationManagerForm : Form
     {
-        private readonly ManagerSettings settings;
+        private ManagerSettings settings;
         private readonly string settingsPath;
         private readonly ListBox apps = new ListBox();
         private readonly TextBox nameBox = new TextBox();
@@ -130,6 +130,8 @@ namespace CodexProxyManager
 
         private void SaveSelection(object sender, EventArgs e)
         {
+            var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+            string before = serializer.Serialize(settings);
             try
             {
                 ManagedApplication previous = apps.SelectedItem as ManagedApplication;
@@ -152,7 +154,8 @@ namespace CodexProxyManager
                 changed = true;
                 Close();
             }
-            catch (Exception ex) { status.Text = ex.Message; }
+            catch { settings = serializer.Deserialize<ManagerSettings>(before); RefreshList(settings.ActiveApplicationId);
+                status.Text = "应用配置未保存，已恢复原列表。请检查输入和目录权限。"; }
         }
 
         private void DeleteSelection(object sender, EventArgs e)
@@ -162,6 +165,8 @@ namespace CodexProxyManager
             if (app.Id == "codex") { status.Text = "Codex 是内置默认应用，不能移除。"; return; }
             if (MessageBox.Show(this, "移除“" + app.Name + "”的启动配置？应用程序及代理档案会保留。", "移除应用",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+            string before = serializer.Serialize(settings);
             try
             {
                 settings.Applications.Remove(app);
@@ -169,7 +174,8 @@ namespace CodexProxyManager
                 changed = true;
                 RefreshList(settings.ActiveApplicationId);
             }
-            catch (Exception ex) { status.Text = ex.Message; }
+            catch { settings = serializer.Deserialize<ManagerSettings>(before); RefreshList(settings.ActiveApplicationId);
+                status.Text = "应用配置未保存，已恢复原列表。请检查目录权限。"; }
         }
 
         private Label LabelAt(string text, int x, int y, int w, int h, float size)

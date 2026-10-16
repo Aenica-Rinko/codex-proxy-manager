@@ -110,6 +110,7 @@ namespace CodexProxyManager
                 ReviewTests.Run(scratch);
                 ServiceTests.Run(scratch);
                 LocalFileImportTests.Run(scratch);
+                StrategyTests.Run(scratch);
                 if (Array.IndexOf(args, "--unit-only") >= 0)
                 {
                     Assert(before == RegistrySnapshot(), "Unit tests changed Windows proxy settings");
@@ -117,6 +118,7 @@ namespace CodexProxyManager
                     return 0;
                 }
                 LocalFileImportTests.RunCore(scratch, root);
+                StrategyTests.RunCore(scratch, root);
                 string executable = ProcessProxyLauncher.FindCodexExecutable();
                 Assert(File.Exists(executable), "Registered Codex executable discovery failed");
                 Console.WriteLine("PASS registered Codex executable discovered");
@@ -202,7 +204,7 @@ namespace CodexProxyManager
                     CoreUrl = "http://127.0.0.1:" + controller, NodeUrl = "http://127.0.0.1:" + controller,
                     CoreSecret = "isolated-regression-secret", NodeSecret = "isolated-regression-secret", GroupName = "Fixture Private Selector",
                     MixedPort = mixed, SessionActive = true, CoreAlive = true, ApplicationRunning = true,
-                    ProcessNames = new[] { "RegressionTests.exe" }
+                    ProcessNames = new[] { Path.GetFileName(Assembly.GetExecutingAssembly().Location) }
                 });
                 Assert(before == RegistrySnapshot(), "Diagnostics changed Windows proxy settings");
                 session.Stop();
@@ -256,7 +258,7 @@ namespace CodexProxyManager
                     Assert(before == RegistrySnapshot(), "Custom application routing changed Windows proxy settings");
                     Console.WriteLine("PASS custom application traffic reaches test upstream; original profile and Windows proxy preserved");
 
-                    string fixture = Path.Combine(scratch, "RunningFixture.exe");
+                    string fixture = RunningApplicationTests.FixturePath(scratch);
                     var liveApp = new ManagedApplication { Id = "live-fixture", Name = "Live fixture", Executable = fixture, LaunchMode = "chromium" };
                     ProcessStartInfo liveInfo = ProcessProxyLauncher.BuildStartInfo(fixture, mixed, liveApp);
                     liveInfo.Arguments += " --hold-proxy-fixture";

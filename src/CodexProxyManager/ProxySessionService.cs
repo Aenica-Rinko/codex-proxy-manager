@@ -114,6 +114,11 @@ namespace CodexProxyManager
         {
             if (!File.Exists(corePath)) throw new FileNotFoundException("找不到内置 Mihomo 核心。", corePath);
             if (!File.Exists(configPath)) throw new FileNotFoundException("找不到代理配置。", configPath);
+            if (!PrivacyLog.SafePath(corePath) || !PrivacyLog.SafePath(configPath) || !PrivacyLog.SafePath(coreHome) ||
+                !PrivacyLog.SafePath(statePath) || !PrivacyLog.SafePath(Path.Combine(Path.GetDirectoryName(statePath), "session-config.yaml")))
+                throw new InvalidDataException("核心、配置或会话路径包含链接，已取消启动。");
+            if (new FileInfo(configPath).Length > LocalFileImport.MaximumBytes)
+                throw new InvalidDataException("代理配置超过 10 MiB，已取消启动。");
             if (!File.Exists(Path.Combine(coreHome, "GeoSite.dat"))) throw new FileNotFoundException("找不到 GeoSite.dat。", coreHome);
             if (!File.Exists(Path.Combine(coreHome, "geoip.metadb"))) throw new FileNotFoundException("找不到 geoip.metadb。", coreHome);
             if (LoopbackProbe.IsListening(mixedPort, 150)) throw new InvalidOperationException("端口 " + mixedPort + " 已被其他程序占用。");
@@ -132,6 +137,10 @@ namespace CodexProxyManager
             info.WindowStyle = ProcessWindowStyle.Hidden;
             info.RedirectStandardOutput = true;
             info.RedirectStandardError = true;
+            var environmentKeys = new System.Collections.Generic.List<string>();
+            foreach (string key in info.EnvironmentVariables.Keys) environmentKeys.Add(key);
+            foreach (string key in environmentKeys)
+                if (key.StartsWith("CLASH_", StringComparison.OrdinalIgnoreCase)) info.EnvironmentVariables.Remove(key);
             coreProcess = new Process();
             coreProcess.StartInfo = info;
             coreProcess.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
@@ -208,7 +217,8 @@ namespace CodexProxyManager
                 }
             }
             catch { Program.AppendLog(managerLog, "Could not stop core."); }
-            finally { if (coreProcess != null) coreProcess.Dispose(); coreProcess = null; }
+            if (CoreAlive) throw new IOException("专用核心尚未退出，已保留会话状态以便重试停止。");
+            if (coreProcess != null) coreProcess.Dispose(); coreProcess = null;
         }
 
         private void RecoverStaleSession()

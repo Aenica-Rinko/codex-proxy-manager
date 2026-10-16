@@ -343,6 +343,14 @@ namespace CodexProxyManager
             host.NodeSwitchRequested += delegate(string node) { BeginNodeSwitch(node); };
             host.ProfilesRequested += delegate { OpenProfileManager(); };
             host.ApplicationsRequested += delegate { OpenConfiguration(true); };
+            host.GroupsRequested += delegate
+            {
+                if (busy || host.ScreenshotPrivacy) return;
+                if (!sessionActive) { Notify("请先启动代理，再查看策略组与引用。", ToolTipIcon.Info); return; }
+                busy = true; Interlocked.Increment(ref sessionRevision);
+                try { using (var form = new StrategyGroupsForm(nodeService)) form.ShowDialog(host); }
+                finally { nodeService.Health.Reset(); busy = false; Interlocked.Increment(ref sessionRevision); dashboardTicks = 4; }
+            };
             host.DiagnosticsRequested += delegate
             {
                 if (busy) return;
@@ -534,7 +542,8 @@ namespace CodexProxyManager
                 try
                 {
                     MeasureGroupDelays();
-                    NodeInfo fastest = NodeControlService.Fastest(currentNodes);
+                    if (automatic && currentNodes.Any(n => n.Name == currentNodeName && StrategyGraph.IsGroup(n.Type))) return;
+                    NodeInfo fastest = automatic ? nodeService.AutomaticFastest(currentNodes) : NodeControlService.Fastest(currentNodes);
                     if (fastest == null) throw new InvalidOperationException("没有检测到可用节点。");
                     bool switched = SwitchNodeCore(fastest.Name);
                     Ui(delegate { host.UpdateNodes(currentNodes, currentNodeName); });
@@ -648,51 +657,23 @@ namespace CodexProxyManager
         private void BeginAutoHealthCheck()
         {
             if (!autoFailover || !sessionActive || busy || String.IsNullOrWhiteSpace(currentNodeName)) return;
-            bool isManagedNode = currentNodes.Any(delegate(NodeInfo node)
-            {
-                return String.Equals(node.Name, currentNodeName, StringComparison.Ordinal);
-            });
-            if (!isManagedNode || Interlocked.CompareExchange(ref healthCheckRunning, 1, 0) != 0) return;
-            string checkedNode = currentNodeName;
+            if (Interlocked.CompareExchange(ref healthCheckRunning, 1, 0) != 0) return;
             int revision = sessionRevision;
             NodeControlService checkedService = nodeService;
             ThreadPool.QueueUserWorkItem(delegate
             {
-                bool triggerFailover = false;
                 try
                 {
-                    int delay = checkedService.ProbeNode(checkedNode);
-                    if (!sessionActive || sessionRevision != revision || currentNodeName != checkedNode) return;
-                    if (delay <= 0) throw new InvalidOperationException("节点探测未返回有效延迟。");
-                    checkedService.Health.Record(checkedNode, true);
-                    NodeInfo node = currentNodes.FirstOrDefault(delegate(NodeInfo item)
-                    {
-                        return String.Equals(item.Name, checkedNode, StringComparison.Ordinal);
-                    });
-                    if (node != null) node.Delay = delay;
+                    if (checkedService.TryAutoFailover(delegate { return sessionActive && !busy && sessionRevision == revision; }))
+                    { Program.AppendLog(managerLog, "Auto failover completed."); Notify("连续三次探测失败，已在当前选择组内切换可用线路。", ToolTipIcon.Info); }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    if (!sessionActive || sessionRevision != revision || currentNodeName != checkedNode) return;
-                    int failures = checkedService.Health.Record(checkedNode, false);
-                    Program.AppendLog(managerLog, "Health check failed for " + checkedNode + " (" + failures + "/3): " + ex.Message);
-                    if (failures >= NodeHealthPolicy.FailoverThreshold)
-                    {
-                        checkedService.Health.Reset();
-                        triggerFailover = true;
-                    }
+                    Program.AppendLog(managerLog, "Health check error.");
                 }
                 finally
                 {
                     Interlocked.Exchange(ref healthCheckRunning, 0);
-                }
-                if (triggerFailover)
-                {
-                    Program.AppendLog(managerLog, "Auto failover triggered for " + checkedNode + ".");
-                    Ui(delegate
-                    {
-                        if (!busy && sessionActive && sessionRevision == revision && currentNodeName == checkedNode) BeginFastestSelection(true);
-                    });
                 }
             });
         }

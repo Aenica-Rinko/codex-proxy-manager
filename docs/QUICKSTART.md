@@ -1,6 +1,6 @@
 # 从零开始使用 Codex Proxy Manager
 
-本文说明 v1.0.0；独立 Windows/DPI/真实共存验收尚未全部完成，版本号不代表全面兼容认证。管理器 ZIP 含 EXE、docs、tools、LICENSE 和 source 对应源码，不含核心、规则库、节点或订阅。项目采用 GPL-3.0-only，署名 Rinko。历史包已从 GitHub 下架，本文不作为旧结构包的安装说明。
+本文说明 v1.1.0；独立 Windows/DPI/真实共存验收尚未全部完成，版本号不代表全面兼容认证。管理器 ZIP 含 EXE、YamlDotNet.dll、docs、tools、LICENSE 和 source 对应源码，不含核心、规则库、节点或订阅。项目采用 GPL-3.0-only，署名 Rinko。本文不作为旧版本包的安装说明。
 
 **已知问题：** 已收到启动应用后商店加载或游戏联网变慢的反馈，原因未定位、未修复；对这类共存场景敏感的用户建议等待后续更新。详情和反馈方式见 [发布说明](RELEASE_NOTES.md)。
 
@@ -18,11 +18,11 @@
 
 成功后会生成 `app/CodexProxyManager.exe` 及随应用提供的说明。该步骤只编译管理器，不启动代理，也不需要节点或已安装 Codex。不需要 Visual Studio；构建脚本使用 Windows .NET Framework 编译器。从发布包内重新构建时，在 `source/` 内执行上述命令，输出到 `source/app/`。
 
-如果你拿到的是维护者生成的 `CodexProxyManager-v1.0.0-manager-only.zip`，它已经有 EXE，可以跳过编译；仍须完整解压，不要在 ZIP 内直接运行。当前没有自动安装器或自动更新功能。遇到脚本策略限制应遵循本机管理策略，不建议为了本项目全局关闭安全限制。
+如果你拿到的是维护者生成的 `CodexProxyManager-v1.1.0-manager-only.zip`，它已经有 EXE 和依赖 DLL，可以跳过编译；仍须完整解压，不要在 ZIP 内直接运行，也不要仅复制 EXE。当前没有自动安装器或自动更新功能。遇到脚本策略限制应遵循本机管理策略，不建议为了本项目全局关闭安全限制。
 
 ## 2. 准备代理核心和规则文件
 
-目标是 Windows x64，程序使用 .NET Framework 4.x。本地已测试环境不等于所有 Windows 版本均受支持；干净 Windows 10/11 与高 DPI 验收仍在发布清单中。
+目标是 Windows x64，v1.1.0 起需要 .NET Framework 4.7.2 或更高版本；保留 EXE 旁随包提供的 YamlDotNet.dll。本地已测试环境不等于所有 Windows 版本均受支持；干净 Windows 10/11 与高 DPI 验收仍在发布清单中。
 
 从可信来源取得与你的系统兼容的 Mihomo Windows amd64 核心，解压并命名为 `mihomo.exe`。请从[上游安装说明](https://wiki.metacubex.one/startup/)进入下载渠道，不使用陌生人的替换 EXE。当前本地回归使用的核心自报版本为 v1.19.24；这不是对该本地文件来源的认证，也不保证所有核心版本兼容。
 
@@ -31,6 +31,7 @@
 ```text
 应用目录/                   # 源码构建为 app/；管理器 ZIP 为解压根目录
 ├── CodexProxyManager.exe
+├── YamlDotNet.dll             # 随管理器包提供，不要单独搬走 EXE
 ├── LICENSE
 ├── docs/QUICKSTART.md
 ├── tools/                   # 手动恢复工具

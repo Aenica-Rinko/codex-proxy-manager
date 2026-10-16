@@ -34,6 +34,7 @@ if ((Test-Path -LiteralPath $output) -and ((Get-Item -LiteralPath $output -Force
     throw 'Build output must not replace a linked executable.'
 }
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$yamlDependency = Get-VerifiedYamlDependency
 
 if (-not (Test-Path -LiteralPath $compiler)) {
     throw "C# compiler not found: $compiler"
@@ -47,6 +48,7 @@ if (-not (Test-Path -LiteralPath $compiler)) {
     /reference:System.Management.dll `
     /reference:System.Web.Extensions.dll `
     /reference:System.Windows.Forms.dll `
+    /reference:$yamlDependency `
     $sources
 
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) {
@@ -54,8 +56,10 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) {
 }
 
 Get-Item -LiteralPath $output | Select-Object FullName, Length, LastWriteTime
+Copy-Item -LiteralPath $yamlDependency -Destination (Join-Path $OutputDirectory 'YamlDotNet.dll')
 # Ship help beside the app; never copy private runtime or user data.
 $support = [ordered]@{'README.md'='resources/package-README.md'; 'LICENSE'='LICENSE'}
+$support['third_party/YamlDotNet/LICENSE.txt'] = 'third_party/YamlDotNet/LICENSE.txt'
 foreach ($name in (@($ManagerDocs) + @($ManagerTools))) { $support[$name] = $name }
 foreach ($entry in $support.GetEnumerator()) {
     $destination = Join-Path $OutputDirectory $entry.Key

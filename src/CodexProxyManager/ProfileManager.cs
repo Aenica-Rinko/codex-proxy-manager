@@ -253,7 +253,7 @@ namespace CodexProxyManager
                     }
             };
             AddChildLabel(filePanel, "支持含内联 proxies 的 Clash/Mihomo YAML、逐行分享链接或 Base64 文本，最大 10 MiB。", 0, 80, 510, 50, 9F, Color.FromArgb(139, 148, 158), false);
-            AddChildLabel(filePanel, "仅复制节点，生成专用分流；不采用源文件的 TUN、DNS、端口和全局规则。原文件不修改，后续修改不会自动同步。", 0, 135, 510, 54, 9F, Color.FromArgb(210, 153, 34), false);
+            AddChildLabel(filePanel, "保留节点、策略组和组间引用，生成专用分流；不采用源文件的 TUN、DNS、端口和全局规则。原文件不修改，不自动同步。", 0, 135, 510, 54, 9F, Color.FromArgb(210, 153, 34), false);
             AddChildLabel(filePanel, "仅导入可信文件；不支持仅有远程 provider 引用的档案或 v2rayN/Xray JSON。校验不启动目标应用、不测速。", 0, 194, 510, 46, 8.8F, Color.FromArgb(139, 148, 158), false);
 
             Button addButton = MakeChildButton(right, "添加并设为当前", 18, 391, 170, Color.FromArgb(35, 134, 54));
@@ -379,6 +379,7 @@ namespace CodexProxyManager
         {
             if (importRunning) return;
             ImportedLocalProfile imported = null;
+            ImportedLocalProfile pendingFiles = null;
             try
             {
                 string name = profileNameBox.Text.Trim();
@@ -387,6 +388,7 @@ namespace CodexProxyManager
                 string profileDirectory = Path.Combine(userRoot, "profiles", id);
                 string relativeConfig = Path.Combine("profiles", id, "config.yaml");
                 string configPath = StartupConfiguration.ResolveUserPath(userRoot, relativeConfig);
+                pendingFiles = new ImportedLocalProfile { ConfigPath = configPath, ProfileDirectory = profileDirectory };
                 string kind;
                 string yaml;
 
@@ -410,8 +412,10 @@ namespace CodexProxyManager
                     string providerDirectory = Path.Combine(userRoot, "core-data", "providers");
                     if (!PrivacyLog.SafePath(providerDirectory)) throw new InvalidDataException("provider 目录包含链接，未保存分享链接。");
                     Directory.CreateDirectory(providerDirectory);
-                    File.WriteAllText(Path.Combine(providerDirectory, id + ".txt"), links + Environment.NewLine,
-                        new UTF8Encoding(false));
+                    if (Encoding.UTF8.GetByteCount(links) > LocalFileImport.MaximumBytes)
+                        throw new InvalidDataException("分享内容超过 10 MiB，未保存。");
+                    pendingFiles.ProviderPath = StartupConfiguration.ResolveUserPath(userRoot, Path.Combine("core-data", "providers", id + ".txt"));
+                    LocalFileImport.CreateFile(pendingFiles.ProviderPath, links + Environment.NewLine, delegate { pendingFiles.ProviderCreated = true; });
                     yaml = ProviderConfigFactory.BuildFileProvider(id, settings.MixedPort);
                 }
                 else if (sourceTypeBox.SelectedIndex == 2)
@@ -458,8 +462,10 @@ namespace CodexProxyManager
 
                 if (imported == null)
                 {
+                    if (Directory.Exists(profileDirectory)) throw new IOException("档案目录已存在，未覆盖。");
                     Directory.CreateDirectory(profileDirectory);
-                    File.WriteAllText(configPath, yaml, new UTF8Encoding(false));
+                    pendingFiles.ProfileDirectoryCreated = true;
+                    LocalFileImport.CreateFile(configPath, yaml, delegate { pendingFiles.ConfigCreated = true; });
                 }
                 ProxyProfileDefinition profile = new ProxyProfileDefinition
                 {
@@ -467,7 +473,7 @@ namespace CodexProxyManager
                     Name = name,
                     Kind = kind,
                     ConfigFile = relativeConfig,
-                    ProxyGroupName = sourceTypeBox.SelectedIndex == 3 ? externalGroupBox.Text.Trim() : "Codex Proxy",
+                    ProxyGroupName = imported != null ? imported.EntryGroup : sourceTypeBox.SelectedIndex == 3 ? externalGroupBox.Text.Trim() : "Codex Proxy",
                     NodeControllerUrl = sourceTypeBox.SelectedIndex == 3
                         ? StartupConfiguration.NormalizeControllerUrl(externalControllerBox.Text) : "",
                     NodeControllerSecret = sourceTypeBox.SelectedIndex == 3 ? externalSecretBox.Text : ""
@@ -479,9 +485,10 @@ namespace CodexProxyManager
                     FollowActiveProfile();
                 })) return;
                 if (imported != null) imported.Committed = true;
+                else pendingFiles.Committed = true;
                 changed = true;
                 ClearEditor();
-                SetStatus(imported == null ? "档案已保存并设为当前。" : "已导入 " + imported.NodeCount + " 个节点并设为当前；原文件未修改。", true);
+                SetStatus(imported == null ? "档案已保存并设为当前。" : "已导入 " + imported.NodeCount + " 个节点、" + imported.GroupCount + " 个原策略组；原文件未修改。", true);
                 RefreshProfileList();
             }
             catch (Exception ex)
@@ -491,6 +498,7 @@ namespace CodexProxyManager
             finally
             {
                 if (imported != null) imported.Dispose();
+                if (pendingFiles != null) pendingFiles.Dispose();
                 importRunning = false;
                 if (!IsDisposed) Enabled = true;
             }
@@ -498,9 +506,13 @@ namespace CodexProxyManager
 
         private void SaveSettings()
         {
+            bool optionsChanged = settings.AutoSelectFastest != autoFastestBox.Checked || settings.AutoFailover != autoFailoverBox.Checked;
+            bool previousFastest = settings.AutoSelectFastest, previousFailover = settings.AutoFailover;
             settings.AutoSelectFastest = autoFastestBox.Checked;
             settings.AutoFailover = autoFailoverBox.Checked;
-            StartupConfiguration.WriteSettings(Path.Combine(userRoot, "settings.json"), settings);
+            try { StartupConfiguration.WriteSettings(Path.Combine(userRoot, "settings.json"), settings); }
+            catch { settings.AutoSelectFastest = previousFastest; settings.AutoFailover = previousFailover; throw; }
+            if (optionsChanged) changed = true;
         }
 
         private bool CommitChange(Action change)
@@ -799,7 +811,7 @@ namespace CodexProxyManager
             return yaml.ToString();
         }
 
-        private static void AppendCodexRules(StringBuilder yaml)
+        internal static void AppendCodexRules(StringBuilder yaml, string entry = "Codex Proxy")
         {
             yaml.AppendLine("rules:");
             yaml.AppendLine("  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve");
@@ -810,8 +822,8 @@ namespace CodexProxyManager
             yaml.AppendLine("  - AND,((PROCESS-NAME,codex.exe),(GEOSITE,cn)),DIRECT");
             yaml.AppendLine("  - AND,((PROCESS-NAME,ChatGPT.exe),(GEOIP,CN)),DIRECT");
             yaml.AppendLine("  - AND,((PROCESS-NAME,codex.exe),(GEOIP,CN)),DIRECT");
-            yaml.AppendLine("  - PROCESS-NAME,ChatGPT.exe,Codex Proxy");
-            yaml.AppendLine("  - PROCESS-NAME,codex.exe,Codex Proxy");
+            yaml.AppendLine("  - PROCESS-NAME,ChatGPT.exe," + entry);
+            yaml.AppendLine("  - PROCESS-NAME,codex.exe," + entry);
             yaml.AppendLine("  - MATCH,DIRECT");
         }
 

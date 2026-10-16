@@ -61,6 +61,8 @@ namespace CodexProxyManager
         private readonly IControllerClient core, node;
         private readonly string preferredProxyGroupName;
         internal readonly NodeHealthPolicy Health = new NodeHealthPolicy();
+        private DateTime nextFailoverAttempt = DateTime.MinValue;
+        internal Func<DateTime> Clock = delegate { return DateTime.UtcNow; };
         internal NodeControlService(IControllerClient core, IControllerClient node, string preferredGroup)
         {
             if (core == null || node == null) throw new ArgumentNullException();
@@ -111,7 +113,7 @@ namespace CodexProxyManager
                         leafNodeCount++;
                 }
                 if (!String.IsNullOrWhiteSpace(preferredProxyGroupName) &&
-                    String.Equals(pair.Key, preferredProxyGroupName, StringComparison.OrdinalIgnoreCase))
+                    String.Equals(pair.Key, preferredProxyGroupName, StringComparison.Ordinal))
                 {
                     selector = candidate;
                     selectorName = pair.Key;
@@ -126,7 +128,7 @@ namespace CodexProxyManager
             }
             if (selector == null) throw new InvalidDataException("找不到可切换的策略组。");
             if (!String.IsNullOrWhiteSpace(preferredProxyGroupName) &&
-                !String.Equals(selectorName, preferredProxyGroupName, StringComparison.OrdinalIgnoreCase))
+                !String.Equals(selectorName, preferredProxyGroupName, StringComparison.Ordinal))
                 throw new InvalidDataException("配置的策略组不存在；请检查档案，不会自动控制其他策略组。");
             List<NodeInfo> nodes = new List<NodeInfo>();
             foreach (string name in ToStringList(GetValue(selector, "all")))
@@ -164,13 +166,54 @@ namespace CodexProxyManager
         internal static NodeInfo Fastest(IEnumerable<NodeInfo> nodes)
         { return nodes.Where(n => n.Delay > 0).OrderBy(n => n.Delay).FirstOrDefault(); }
 
+        internal NodeInfo AutomaticFastest(IEnumerable<NodeInfo> nodes)
+        {
+            var graph = new StrategyGraph(node.Read("/proxies"));
+            return Fastest(nodes.Where(n => graph.ProxyOnly(n.Name)));
+        }
+
         internal void Switch(string group, string target)
         {
             if (String.IsNullOrWhiteSpace(group) || String.IsNullOrWhiteSpace(target)) throw new InvalidDataException();
+            var selected = new StrategyGraph(node.Read("/proxies")).Group(group);
+            if (selected.Type != "Selector" || !selected.Members.Contains(target))
+                throw new InvalidDataException("只能切换选择组中的现有成员。自动策略组由核心管理。");
             node.Put("/proxies/" + Uri.EscapeDataString(group),
                 new JavaScriptSerializer().Serialize(new Dictionary<string, string> { { "name", target } }), 5000);
             // Reset only this manager's core connections, never the external client's connections.
-            core.Delete("/connections");
+            // Selection already succeeded. A connection cleanup failure must not report
+            // the old selection as active or cause repeated selection writes.
+            try { core.Delete("/connections"); } catch { }
+        }
+
+        internal List<StrategyGroupInfo> ReadGroups() { return new StrategyGraph(node.Read("/proxies")).Groups(); }
+
+        internal bool TryAutoFailover(Func<bool> stillCurrent)
+        {
+            if (!stillCurrent() || Clock() < nextFailoverAttempt) return false;
+            var graph = new StrategyGraph(node.Read("/proxies"));
+            string entry = String.IsNullOrWhiteSpace(preferredProxyGroupName) ? ReadCatalog().Group : preferredProxyGroupName;
+            string route;
+            var group = graph.FailoverGroup(entry, out route);
+            if (group == null) { Health.Reset(); return false; }
+            bool healthy;
+            try { healthy = ProbeNode(group.Current) > 0; } catch { healthy = false; }
+            if (!stillCurrent()) return false;
+            if (Health.Record(route, healthy) < NodeHealthPolicy.FailoverThreshold || healthy) return false;
+            // Debounce both successful switches and all-nodes-failed retries.
+            nextFailoverAttempt = Clock().AddSeconds(120);
+            Health.Reset();
+            var candidates = group.Members.Where(n => n != group.Current && graph.ProxyOnly(n))
+                .Select(n => new NodeInfo { Name = n, Type = graph.TypeOf(n) }).ToList();
+            if (candidates.Count == 0) return false;
+            var best = Fastest(MeasureDelays(group.Name, candidates));
+            if (best == null || !stillCurrent()) return false;
+            string latestRoute;
+            var latestGraph = new StrategyGraph(node.Read("/proxies"));
+            var latest = latestGraph.FailoverGroup(entry, out latestRoute);
+            if (latest == null || latestRoute != route || !latest.Members.Contains(best.Name) || !latestGraph.ProxyOnly(best.Name) || !stillCurrent()) return false;
+            Switch(group.Name, best.Name);
+            return true;
         }
 
         internal int RefreshProviders()
