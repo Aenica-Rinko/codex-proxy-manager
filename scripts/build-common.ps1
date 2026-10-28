@@ -1,12 +1,12 @@
 $ManagerSourceFiles = @(
     'AppInfo.cs','GettingStartedForm.cs','ControllerProbe.cs','NodeCatalog.cs','OpenSourceFoundation.cs',
-    'ProfileManager.cs','LocalFileImport.cs','ImportedTopology.cs','ProcessProxyLauncher.cs','RunningApplication.cs','ApplicationConfiguration.cs','PrivacyProtection.cs',
-    'ApplicationManagerForm.cs','UiButton.cs','DashboardForm.cs','PrivacyLog.cs','PrivacyCenterForm.cs','BrowserPrivacyProbe.cs',
+    'ProfileManager.cs','LocalFileImport.cs','ImportPreviewForm.cs','ImportedTopology.cs','ProcessProxyLauncher.cs','RunningApplication.cs','LaunchReadiness.cs','ApplicationConfiguration.cs','PrivacyProtection.cs',
+    'ApplicationManagerForm.cs','UiButton.cs','DesktopExperience.cs','DashboardForm.cs','PrivacyLog.cs','PrivacyCenterForm.cs','BrowserPrivacyProbe.cs',
     'Diagnostics.cs','DiagnosticsForm.cs','NodeControlService.cs','StrategyGroups.cs','StrategyGroupsForm.cs','DashboardPoller.cs','ProxySessionService.cs','RecoveryWatchdog.cs','CodexProxyManager.cs'
 )
 $ManagerSourceFiles = @($ManagerSourceFiles | ForEach-Object { 'src/CodexProxyManager/' + $_ })
 $ManagerTestFiles = @(
-    'NodeCatalogTests.cs','OnboardingTests.cs','ControllerProbeTests.cs','DiagnosticsTests.cs','PrivacyTests.cs','PrivacyUiTests.cs','RunningApplicationTests.cs','ReviewTests.cs','ServiceTests.cs','LocalFileImportTests.cs','StrategyTests.cs','RegressionTests.cs'
+    'NodeCatalogTests.cs','OnboardingTests.cs','ControllerProbeTests.cs','DiagnosticsTests.cs','PrivacyTests.cs','PrivacyUiTests.cs','RunningApplicationTests.cs','ReviewTests.cs','ServiceTests.cs','LocalFileImportTests.cs','StrategyTests.cs','LaunchUxTests.cs','RegressionTests.cs'
 ) | ForEach-Object { 'tests/CodexProxyManager.Tests/' + $_ }
 $ManagerBuildFiles = @(
     'build-common.ps1','build.ps1','test.ps1','package.ps1','test-package.ps1',

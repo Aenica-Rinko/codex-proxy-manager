@@ -17,6 +17,7 @@ namespace CodexProxyManager
     {
         internal YamlSequenceNode Nodes, Groups;
         internal string Entry;
+        internal string IgnoredFields;
         internal int GroupCount { get { return Groups.Children.Count; } }
         private static readonly HashSet<string> Builtins = new HashSet<string>(
             new[] { "DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE", "GLOBAL" }, StringComparer.Ordinal);
@@ -51,6 +52,12 @@ namespace CodexProxyManager
                 if (root == null) throw new InvalidDataException("YAML 顶层必须是映射。");
                 var result = new ImportedTopology { Nodes = Get(root, "proxies") as YamlSequenceNode,
                     Groups = Get(root, "proxy-groups") as YamlSequenceNode ?? new YamlSequenceNode() };
+                var knownGlobals = new HashSet<string>(new[] { "rules", "rule-providers", "proxy-providers", "dns", "tun",
+                    "mixed-port", "port", "socks-port", "external-controller", "secret", "allow-lan", "mode", "log-level",
+                    "ipv6", "profile", "hosts", "sniffer", "listeners", "routing-mark", "interface-name" }, StringComparer.Ordinal);
+                result.IgnoredFields = String.Join("、", root.Children.Keys.Select(Text)
+                    .Where(k => k != "proxies" && k != "proxy-groups")
+                    .Select(k => knownGlobals.Contains(k) ? k : "其他顶层字段").Distinct());
                 if (result.Nodes == null || result.Nodes.Children.Count == 0)
                     throw new InvalidDataException("档案没有内联节点。请先将远程或外部文件 provider 展开为 proxies。");
                 if (result.Nodes.Children.Count > 5000 || result.GroupCount > 256)
@@ -147,6 +154,21 @@ namespace CodexProxyManager
             if (validation) yaml.AppendLine("rules: ['MATCH,REJECT']");
             else ProviderConfigFactory.AppendCodexRules(yaml, Entry);
             return yaml.ToString().Replace("\r\n", "\n");
+        }
+
+        internal string InitialRoute
+        { get { return Text(Get((YamlMappingNode)Groups.Children.Concat(Nodes.Children).First(), "name")); } }
+
+        internal IEnumerable<string[]> DescribeGroups()
+        {
+            foreach (YamlMappingNode group in Groups.Children)
+            {
+                var members = Get(group, "proxies") as YamlSequenceNode;
+                string refs = members == null ? "" : String.Join("、", members.Children.Take(20).Select(Text));
+                if (members != null && members.Children.Count > 20) refs += " …（其余引用仍保留）";
+                if (True(group, "include-all-proxies")) refs += " [包含所有内联节点；遵循原筛选条件]";
+                yield return new[] { Text(Get(group, "name")), Text(Get(group, "type")), refs };
+            }
         }
 
         internal string Snapshot()

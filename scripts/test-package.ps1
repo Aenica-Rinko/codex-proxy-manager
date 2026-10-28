@@ -12,7 +12,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $root $name) -Destination $destination
     }
     # Canary files must never appear in the archive, even when inside the source tree.
-    foreach ($name in @('settings.json','node-preferences.json','manager.log','CodexProxyManager.old.exe',
+    foreach ($name in @('settings.json','node-preferences.json','ui-theme.txt','manager.log','CodexProxyManager.old.exe',
         'profiles\private.yaml','runtime\mihomo.exe','runtime\data\GeoSite.dat','src\CodexProxyManager\unlisted.cs',
         'app\settings.json','app\runtime\mihomo.exe','artifacts\old.zip','unlisted.txt')) {
         $path = Join-Path $fixture $name

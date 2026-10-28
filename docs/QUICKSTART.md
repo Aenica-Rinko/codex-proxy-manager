@@ -1,6 +1,8 @@
 # 从零开始使用 Codex Proxy Manager
 
-本文说明 v1.1.0；独立 Windows/DPI/真实共存验收尚未全部完成，版本号不代表全面兼容认证。管理器 ZIP 含 EXE、YamlDotNet.dll、docs、tools、LICENSE 和 source 对应源码，不含核心、规则库、节点或订阅。项目采用 GPL-3.0-only，署名 Rinko。本文不作为旧版本包的安装说明。
+本文的组件准备步骤适用于 v1.1.0 和 v1.2.0。维护者已同意发布 v1.2.0；独立 Windows/DPI/共存专项验证尚未全部完成，版本号不代表全面兼容认证。管理器 ZIP 含 EXE、YamlDotNet.dll、docs、tools、LICENSE 和 source 对应源码，不含核心、规则库、节点或订阅。项目采用 GPL-3.0-only，署名 Rinko。
+
+v1.2.0 主按钮会按状态显示“启动应用并连接”“恢复代理”或检查说明，含义见 [使用手册](USER_GUIDE.md)。本地文件选择后点击“校验并预览导入”，核对节点／策略组／引用和初始入口，再点击“确认导入”；取消不会新增档案。
 
 **已知问题：** 已收到启动应用后商店加载或游戏联网变慢的反馈，原因未定位、未修复；对这类共存场景敏感的用户建议等待后续更新。详情和反馈方式见 [发布说明](RELEASE_NOTES.md)。
 
@@ -8,7 +10,7 @@
 
 ## 1. 获取并解压管理器
 
-当前仓库为预发布源码项目。GitHub 的“Download ZIP”下载的是源码，不是带 EXE 的安装包；没有 Release 时，不要去陌生网站搜索同名安装器。
+当前仓库提供源码，公开成品以 GitHub Releases 为准。GitHub 的“Download ZIP”下载的是源码，不是带 EXE 的安装包；不要去陌生网站搜索同名安装器。
 
 取得源码后，完整解压到普通、可写且不公开同步的文件夹，在该文件夹打开 PowerShell，运行：
 
@@ -18,7 +20,7 @@
 
 成功后会生成 `app/CodexProxyManager.exe` 及随应用提供的说明。该步骤只编译管理器，不启动代理，也不需要节点或已安装 Codex。不需要 Visual Studio；构建脚本使用 Windows .NET Framework 编译器。从发布包内重新构建时，在 `source/` 内执行上述命令，输出到 `source/app/`。
 
-如果你拿到的是维护者生成的 `CodexProxyManager-v1.1.0-manager-only.zip`，它已经有 EXE 和依赖 DLL，可以跳过编译；仍须完整解压，不要在 ZIP 内直接运行，也不要仅复制 EXE。当前没有自动安装器或自动更新功能。遇到脚本策略限制应遵循本机管理策略，不建议为了本项目全局关闭安全限制。
+如果你拿到的是维护者生成的 `CodexProxyManager-v1.2.0-manager-only.zip`，它已经有 EXE 和依赖 DLL，可以跳过编译；仍须完整解压，不要在 ZIP 内直接运行，也不要仅复制 EXE。当前没有自动安装器或自动更新功能。遇到脚本策略限制应遵循本机管理策略，不建议为了本项目全局关闭安全限制。
 
 ## 2. 准备代理核心和规则文件
 

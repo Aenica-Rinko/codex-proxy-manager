@@ -47,6 +47,7 @@ function Get-ReleaseSafetyFindings {
                     }
                     if ($normalized -match '(?i)(^|/)(\.git|app|artifacts|profiles|runtime|dist|logs|core-data)(/|$)' -or
                         $leaf -match '(?i)^(settings|node-preferences|manager-state|proxy-state)\.json$' -or
+                        $leaf -match '(?i)^ui-theme\.txt(?:\.|$)' -or
                         $leaf -match '(?i)^\.env(?:\.|$)') { $rule = 'private-or-runtime-input' }
                     elseif ($file.PSIsContainer -or $file.Length -gt 8MB) { $rule = 'unsupported-size-or-type' }
                     elseif ($extension -notin @('.cs','.ps1','.md','.txt','.yaml','.yml','.json','.cmd') -and

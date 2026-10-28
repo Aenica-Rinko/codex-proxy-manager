@@ -257,6 +257,7 @@ namespace CodexProxyManager
             AddChildLabel(filePanel, "仅导入可信文件；不支持仅有远程 provider 引用的档案或 v2rayN/Xray JSON。校验不启动目标应用、不测速。", 0, 194, 510, 46, 8.8F, Color.FromArgb(139, 148, 158), false);
 
             Button addButton = MakeChildButton(right, "添加并设为当前", 18, 391, 170, Color.FromArgb(35, 134, 54));
+            sourceTypeBox.SelectedIndexChanged += delegate { addButton.Text = sourceTypeBox.SelectedIndex == 4 ? "校验并预览导入" : "添加并设为当前"; };
             addButton.Click += AddProfile;
             statusLabel = AddChildLabel(right, "", 205, 397, 330, 55, 8.8F,
                 Color.FromArgb(139, 148, 158), false);
@@ -447,11 +448,19 @@ namespace CodexProxyManager
                     importRunning = true;
                     Enabled = false;
                     SetStatus("正在离线读取并校验节点，请稍候…", true);
-                    imported = await Task.Run(delegate
+                    LocalImportPreview preview = await Task.Run(delegate
                     {
-                        return LocalFileImport.Prepare(userRoot, source, mixedPort, delegate(string snapshot)
+                        return LocalFileImport.Analyze(source, delegate(string snapshot)
                         { return LocalFileImport.ValidateWithCore(projectRoot, userRoot, snapshot); });
                     });
+                    Enabled = true;
+                    using (var confirmation = new ImportPreviewForm(preview))
+                    {
+                        if (confirmation.ShowDialog(this) != DialogResult.OK)
+                        { SetStatus("已取消导入，没有新增档案；原文件未修改。", true); return; }
+                    }
+                    Enabled = false;
+                    imported = LocalFileImport.SavePreview(userRoot, preview, mixedPort);
                     id = imported.Id;
                     relativeConfig = imported.RelativeConfig;
                     configPath = imported.ConfigPath;

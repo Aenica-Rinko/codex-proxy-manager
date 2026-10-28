@@ -13,6 +13,18 @@ using System.Collections;
 
 namespace CodexProxyManager
 {
+    // The confirmed data is the exact validated snapshot, never a second read of the selected file.
+    internal sealed class LocalImportPreview
+    {
+        internal readonly string Snapshot;
+        internal readonly ImportedTopology Topology;
+        internal readonly int NodeCount;
+        internal int GroupCount { get { return Topology == null ? 0 : Topology.GroupCount; } }
+        internal string EntryGroup { get { return Topology == null ? "Codex Proxy" : Topology.Entry; } }
+        internal LocalImportPreview(string snapshot, ImportedTopology topology, int count)
+        { Snapshot = snapshot; Topology = topology; NodeCount = count; }
+    }
+
     internal sealed class ImportedLocalProfile : IDisposable
     {
         internal string Id, RelativeConfig, ConfigPath, ProviderPath, ProfileDirectory;
@@ -72,16 +84,30 @@ namespace CodexProxyManager
         internal static ImportedLocalProfile Prepare(string userRoot, string source, int mixedPort,
             Func<string, int> validate)
         {
-            string snapshot = ReadSnapshot(source);
             if (mixedPort < 1024 || mixedPort > 65535) throw new ArgumentOutOfRangeException("mixedPort");
+            return SavePreview(userRoot, Analyze(source, validate), mixedPort);
+        }
+
+        internal static LocalImportPreview Analyze(string source, Func<string, int> validate)
+        {
+            string snapshot = ReadSnapshot(source);
             if (validate == null) throw new ArgumentNullException("validate");
             var topology = ImportedTopology.Parse(snapshot);
             int count = validate(snapshot);
             if (count <= 0) throw new InvalidDataException("文件中没有可用节点；请选择含内联 proxies 的 Clash/Mihomo YAML、分享链接或 Base64 文本。仅有远程 provider 引用的档案暂不支持。");
             if (topology != null && count != topology.Nodes.Children.Count)
                 throw new InvalidDataException("核心识别的节点数量与档案不一致，已停止导入，避免遗漏节点。");
-            var result = new ImportedLocalProfile { Id = "profile-" + Guid.NewGuid().ToString("N"), NodeCount = count,
-                GroupCount = topology == null ? 0 : topology.GroupCount, EntryGroup = topology == null ? "Codex Proxy" : topology.Entry };
+            return new LocalImportPreview(snapshot, topology, count);
+        }
+
+        internal static ImportedLocalProfile SavePreview(string userRoot, LocalImportPreview preview, int mixedPort)
+        {
+            if (preview == null) throw new ArgumentNullException("preview");
+            if (mixedPort < 1024 || mixedPort > 65535) throw new ArgumentOutOfRangeException("mixedPort");
+            string snapshot = preview.Snapshot;
+            var topology = preview.Topology;
+            var result = new ImportedLocalProfile { Id = "profile-" + Guid.NewGuid().ToString("N"), NodeCount = preview.NodeCount,
+                GroupCount = preview.GroupCount, EntryGroup = preview.EntryGroup };
             result.RelativeConfig = Path.Combine("profiles", result.Id, "config.yaml");
             result.ConfigPath = StartupConfiguration.ResolveUserPath(userRoot, result.RelativeConfig);
             result.ProfileDirectory = Path.GetDirectoryName(result.ConfigPath);

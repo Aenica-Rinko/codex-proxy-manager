@@ -287,6 +287,11 @@ namespace CodexProxyManager
         private NodeControlService nodeService;
         private readonly DashboardPoller dashboardPoller = new DashboardPoller();
         private int sessionRevision;
+        private readonly LaunchReadinessPoller readinessPoller = new LaunchReadinessPoller();
+        private readonly AdvisoryExecutableResolver readinessExecutable = new AdvisoryExecutableResolver();
+        private LaunchReadiness readiness = LaunchReadiness.Checking();
+        private int readinessRevision = -1;
+        private DateTime nextReadinessCheck;
         private volatile bool coreReachable;
         private long previousDownloadTotal;
         private long previousUploadTotal;
@@ -323,6 +328,7 @@ namespace CodexProxyManager
             RotateLog(coreErrLog);
 
             host = new DashboardForm();
+            host.SetThemePreferenceRoot(startup.UserDataRoot);
             host.SetLocalProxyEndpoint(startup.ManagedProxy);
             host.SetProfileName(startup.ProfileName);
             host.SetNodeProfile(startup.UserDataRoot, startup.ProfileId);
@@ -400,6 +406,7 @@ namespace CodexProxyManager
             timer.Interval = 1000;
             timer.Tick += TimerTick;
             timer.Start();
+            RefreshReadiness();
             Program.AppendLog(managerLog, "Manager started.");
         }
 
@@ -425,7 +432,9 @@ namespace CodexProxyManager
             else
                 SetStatus("状态：专用代理已停止");
 
-            startItem.Enabled = !busy && !sessionActive;
+            RefreshReadiness();
+            startItem.Text = sessionActive ? "代理运行中" : readiness.ActionText;
+            startItem.Enabled = !busy && !sessionActive && readiness.Kind != LaunchReadinessKind.Checking;
             stopItem.Enabled = !busy && (sessionActive || File.Exists(statePath));
             if (sessionActive && autoFailover && !busy && ++healthCheckTicks >= 30)
             {
@@ -433,6 +442,36 @@ namespace CodexProxyManager
                 BeginAutoHealthCheck();
             }
             UpdateDashboard();
+        }
+
+        private void RefreshReadiness()
+        {
+            if (busy || sessionActive || allowExit) return;
+            int revision = sessionRevision;
+            if (readinessRevision != revision)
+            {
+                readiness = LaunchReadiness.Checking();
+                host.SetReadiness(readiness);
+            }
+            if (readinessRevision == revision && DateTime.UtcNow < nextReadinessCheck) return;
+            // Capture the selected application and file paths before leaving the UI thread.
+            var app = new ManagedApplication { Id = targetApplication.Id, Name = targetApplication.Name,
+                Executable = targetApplication.Executable, LaunchMode = targetApplication.LaunchMode,
+                LimitWebRtc = targetApplication.LimitWebRtc, RestrictBrowserDns = targetApplication.RestrictBrowserDns,
+                DisableQuic = targetApplication.DisableQuic };
+            string config = configPath;
+            if (readinessPoller.Begin(delegate { return LaunchReadiness.Inspect(app, corePath, coreHome, config, mixedPort, readinessExecutable.Resolve); },
+                delegate(LaunchReadiness result)
+                {
+                    Ui(delegate
+                    {
+                        if (host.IsDisposed || !LaunchReadinessPoller.CanApply(revision, sessionRevision, sessionActive, busy, allowExit)) return;
+                        readiness = result;
+                        readinessRevision = revision;
+                        nextReadinessCheck = DateTime.UtcNow.AddSeconds(5);
+                        host.SetReadiness(result);
+                    });
+                })) nextReadinessCheck = DateTime.UtcNow.AddSeconds(5);
         }
 
         private void SetStatus(string text)
@@ -777,6 +816,24 @@ namespace CodexProxyManager
                 Notify("代理已经在运行。", ToolTipIcon.Info);
                 return;
             }
+            if (readinessRevision != sessionRevision || readiness.Kind == LaunchReadinessKind.Checking)
+            { RefreshReadiness(); return; }
+            if (readiness.Kind == LaunchReadinessKind.MissingFiles)
+            {
+                if (host.ScreenshotPrivacy) { Notify("请关闭截图隐私模式后查看准备说明。", ToolTipIcon.Info); return; }
+                using (var guide = new GettingStartedForm(projectRoot, StartupConfiguration.GetUserDataRoot(), false)) guide.ShowDialog(host);
+                nextReadinessCheck = DateTime.MinValue;
+                RefreshReadiness();
+                return;
+            }
+            if (readiness.Kind == LaunchReadinessKind.NeedsRestart || readiness.Kind == LaunchReadinessKind.Unknown)
+            {
+                MessageBox.Show(host, readiness.Hint + "\r\n\r\n处理后状态会自动重新检查。只有匹配原端口和隐私启动参数的 Chromium/Electron 应用可不重启恢复；环境变量模式需重新启动应用。",
+                    "启动前检查", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                nextReadinessCheck = DateTime.MinValue;
+                RefreshReadiness();
+                return;
+            }
             busy = true;
             Interlocked.Increment(ref sessionRevision);
             host.SetBusy(true, "正在检查应用并启动专用代理…");
@@ -789,6 +846,7 @@ namespace CodexProxyManager
             try
             {
                 bool resumed = sessionService.Start(targetApplication);
+                Ui(delegate { host.RecordEvent(resumed ? SessionEvent.Resumed : SessionEvent.Started); });
                 sawCodex = true; noCodexTicks = 0; sessionActive = true; coreReachable = true;
                 startedSuccessfully = true;
                 Notify(resumed ? "代理已恢复，未重启当前应用。应用可能需要重新连接；启动参数效果仍需验证。" :
@@ -798,7 +856,7 @@ namespace CodexProxyManager
             {
                 Program.AppendLog(managerLog, "START ERROR: " + ex);
                 try { EndSessionCore(); } catch { }
-                ShowError(ex.Message);
+                ShowError(ex.Message + "\r\n\r\n下一步：打开“连接诊断”检查组件、端口和档案。若提示应用已运行，请保存工作并退出应用后重试；管理器不会替你关闭应用。");
             }
             finally
             {
@@ -848,10 +906,12 @@ namespace CodexProxyManager
 
         private void EndSessionCore()
         {
+            bool wasActive = sessionActive;
             Interlocked.Increment(ref sessionRevision);
             coreReachable = false;
             if (sessionService != null) sessionService.Stop();
             sessionActive = false;
+            if (wasActive) Ui(delegate { host.RecordEvent(SessionEvent.Stopped); });
             sawCodex = false;
             noCodexTicks = 0;
             dashboardTicks = 0;
@@ -880,6 +940,9 @@ namespace CodexProxyManager
             Ui(delegate
             {
                 tray.BalloonTipTitle = "Codex Proxy Manager";
+                if (message.StartsWith("已切换") || message.StartsWith("连续三次"))
+                    host.RecordEvent(message.StartsWith("已切换到代理档案") ? SessionEvent.ProfileChanged : SessionEvent.NodeChanged);
+                if (message.StartsWith("远程订阅刷新完成")) host.RecordEvent(SessionEvent.ProvidersUpdated);
                 tray.BalloonTipText = message;
                 if (host.ScreenshotPrivacy) tray.BalloonTipText = "操作状态已更新；截图模式下隐藏详细信息。";
                 tray.BalloonTipIcon = icon;
@@ -891,6 +954,7 @@ namespace CodexProxyManager
         {
             Ui(delegate
             {
+                host.RecordEvent(SessionEvent.Failed);
                 MessageBox.Show(host.ScreenshotPrivacy ? "操作失败。截图模式下已隐藏详情，请使用连接诊断。" : message,
                     "Codex Proxy Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
             });

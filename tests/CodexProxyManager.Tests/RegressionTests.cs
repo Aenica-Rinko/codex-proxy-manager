@@ -111,6 +111,7 @@ namespace CodexProxyManager
                 ServiceTests.Run(scratch);
                 LocalFileImportTests.Run(scratch);
                 StrategyTests.Run(scratch);
+                LaunchUxTests.Run(scratch);
                 if (Array.IndexOf(args, "--unit-only") >= 0)
                 {
                     Assert(before == RegistrySnapshot(), "Unit tests changed Windows proxy settings");

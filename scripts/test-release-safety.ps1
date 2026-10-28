@@ -44,6 +44,9 @@ try {
     [IO.File]::WriteAllText((Join-Path $scratch 'settings.json'), '{}')
     $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('settings.json'))
     Check ($finding[0].Rule -eq 'private-or-runtime-input') 'Private filename accepted'
+    [IO.File]::WriteAllText((Join-Path $scratch 'ui-theme.txt'), 'light')
+    $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('ui-theme.txt'))
+    Check ($finding[0].Rule -eq 'private-or-runtime-input') 'Private theme preference accepted'
     $finding = @(Get-ReleaseSafetyFindings -Root $scratch -RelativePaths @('missing.md'))
     Check ($finding[0].Rule -eq 'unreadable-input') 'Missing input accepted'
     [IO.File]::WriteAllBytes($fixture, [byte[]]@(65,0,66))

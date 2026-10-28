@@ -2,6 +2,8 @@
 codex-mihomo.yaml
 settings.json
 node-preferences.json
+ui-theme.txt
+ui-theme.txt.tmp-*
 profiles/
 
 # Runtime state, logs, and caches
